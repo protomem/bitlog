@@ -13,6 +13,7 @@ const (
 	GET
 	SET
 	DEL
+	KEYS
 )
 
 func ParseCommand(s string) (Command, error) {
@@ -25,6 +26,8 @@ func ParseCommand(s string) (Command, error) {
 		return SET, nil
 	case strings.EqualFold(s, "del"):
 		return DEL, nil
+	case strings.EqualFold(s, "keys"):
+		return KEYS, nil
 	default:
 		return 0, ErrUnknownCommand
 	}
@@ -40,6 +43,8 @@ func (cmd Command) String() string {
 		return "SET"
 	case DEL:
 		return "DEL"
+	case KEYS:
+		return "KEYS"
 	default:
 		panic(ErrUnknownCommand)
 	}
@@ -77,6 +82,10 @@ func ParseOperation(cmdRaw string, args ...string) (Operation, error) {
 		if err := validateDelArgs(args...); err != nil {
 			return Operation{}, err
 		}
+	case KEYS:
+		if err := validateKeysArgs(args...); err != nil {
+			return Operation{}, err
+		}
 	}
 
 	op := Operation{
@@ -111,6 +120,13 @@ func validateSetArgs(args ...string) error {
 func validateDelArgs(args ...string) error {
 	if len(args) == 0 {
 		return NewWrongNumberOfArguments(DEL)
+	}
+	return nil
+}
+
+func validateKeysArgs(args ...string) error {
+	if len(args) != 1 {
+		return NewWrongNumberOfArguments(KEYS)
 	}
 	return nil
 }
