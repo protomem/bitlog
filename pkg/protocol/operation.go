@@ -12,6 +12,7 @@ const (
 	PING
 	GET
 	SET
+	DEL
 )
 
 func ParseCommand(s string) (Command, error) {
@@ -22,6 +23,8 @@ func ParseCommand(s string) (Command, error) {
 		return GET, nil
 	case strings.EqualFold(s, "set"):
 		return SET, nil
+	case strings.EqualFold(s, "del"):
+		return DEL, nil
 	default:
 		return 0, ErrUnknownCommand
 	}
@@ -35,6 +38,8 @@ func (cmd Command) String() string {
 		return "GET"
 	case SET:
 		return "SET"
+	case DEL:
+		return "DEL"
 	default:
 		panic(ErrUnknownCommand)
 	}
@@ -68,6 +73,10 @@ func ParseOperation(cmdRaw string, args ...string) (Operation, error) {
 		if err := validateSetArgs(args...); err != nil {
 			return Operation{}, err
 		}
+	case DEL:
+		if err := validateDelArgs(args...); err != nil {
+			return Operation{}, err
+		}
 	}
 
 	op := Operation{
@@ -95,6 +104,13 @@ func validateGetArgs(args ...string) error {
 func validateSetArgs(args ...string) error {
 	if len(args) != 2 {
 		return NewWrongNumberOfArguments(SET)
+	}
+	return nil
+}
+
+func validateDelArgs(args ...string) error {
+	if len(args) == 0 {
+		return NewWrongNumberOfArguments(DEL)
 	}
 	return nil
 }
