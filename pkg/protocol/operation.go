@@ -52,11 +52,11 @@ func ParseOperation(cmdRaw string, args ...string) (Operation, error) {
 
 	switch cmd {
 	case PING:
-		if err := verifyPingArgs(args...); err != nil {
+		if err := validatePingArgs(args...); err != nil {
 			return Operation{}, err
 		}
 	case GET:
-		if err := verifyGetArgs(args...); err != nil {
+		if err := validateGetArgs(args...); err != nil {
 			return Operation{}, err
 		}
 	}
@@ -69,14 +69,14 @@ func ParseOperation(cmdRaw string, args ...string) (Operation, error) {
 	return op, nil
 }
 
-func verifyPingArgs(args ...string) error {
+func validatePingArgs(args ...string) error {
 	if len(args) > 1 {
 		return NewWrongNumberOfArguments(PING)
 	}
 	return nil
 }
 
-func verifyGetArgs(args ...string) error {
+func validateGetArgs(args ...string) error {
 	if len(args) != 1 {
 		return NewWrongNumberOfArguments(GET)
 	}
