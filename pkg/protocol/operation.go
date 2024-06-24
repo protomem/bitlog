@@ -2,24 +2,20 @@ package protocol
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 )
 
 type Command int
 
-var ErrUnknownCommand = fmt.Errorf("unknown command")
-
-func NewErrUnknownCommand(cmd string, args ...string) error {
-	return fmt.Errorf("%w '%s', with args beginning with: %s", ErrUnknownCommand, cmd, fmtArgs(args...))
-}
-
 const (
 	_ Command = iota
+	PING
 )
 
 func ParseCommand(s string) (Command, error) {
 	switch {
+	case strings.EqualFold(s, "ping"):
+		return PING, nil
 	default:
 		return 0, ErrUnknownCommand
 	}
@@ -27,6 +23,8 @@ func ParseCommand(s string) (Command, error) {
 
 func (cmd Command) String() string {
 	switch cmd {
+	case PING:
+		return "PING"
 	default:
 		panic(ErrUnknownCommand)
 	}
@@ -47,7 +45,12 @@ func ParseOperation(cmdRaw string, args ...string) (Operation, error) {
 		return Operation{}, err
 	}
 
-	// TODO: validate args
+	switch cmd {
+	case PING:
+		if err := verifyPingArgs(args...); err != nil {
+			return Operation{}, err
+		}
+	}
 
 	op := Operation{
 		Cmd:  cmd,
@@ -57,14 +60,9 @@ func ParseOperation(cmdRaw string, args ...string) (Operation, error) {
 	return op, nil
 }
 
-func fmtArgs(args ...string) string {
-	fargs := make([]string, len(args))
-	for i := 0; i < len(args); i++ {
-		fargs[i] = quote(args[i])
+func verifyPingArgs(args ...string) error {
+	if len(args) > 1 {
+		return NewWrongNumberOfArguments(PING)
 	}
-	return strings.Join(fargs, " ")
-}
-
-func quote(s string) string {
-	return "'" + s + "'"
+	return nil
 }
