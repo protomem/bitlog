@@ -11,6 +11,7 @@ const (
 	_ Command = iota
 	PING
 	GET
+	SET
 )
 
 func ParseCommand(s string) (Command, error) {
@@ -19,6 +20,8 @@ func ParseCommand(s string) (Command, error) {
 		return PING, nil
 	case strings.EqualFold(s, "get"):
 		return GET, nil
+	case strings.EqualFold(s, "set"):
+		return SET, nil
 	default:
 		return 0, ErrUnknownCommand
 	}
@@ -30,6 +33,8 @@ func (cmd Command) String() string {
 		return "PING"
 	case GET:
 		return "GET"
+	case SET:
+		return "SET"
 	default:
 		panic(ErrUnknownCommand)
 	}
@@ -59,6 +64,10 @@ func ParseOperation(cmdRaw string, args ...string) (Operation, error) {
 		if err := validateGetArgs(args...); err != nil {
 			return Operation{}, err
 		}
+	case SET:
+		if err := validateSetArgs(args...); err != nil {
+			return Operation{}, err
+		}
 	}
 
 	op := Operation{
@@ -79,6 +88,13 @@ func validatePingArgs(args ...string) error {
 func validateGetArgs(args ...string) error {
 	if len(args) != 1 {
 		return NewWrongNumberOfArguments(GET)
+	}
+	return nil
+}
+
+func validateSetArgs(args ...string) error {
+	if len(args) != 2 {
+		return NewWrongNumberOfArguments(SET)
 	}
 	return nil
 }
