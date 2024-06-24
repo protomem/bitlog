@@ -10,12 +10,15 @@ type Command int
 const (
 	_ Command = iota
 	PING
+	GET
 )
 
 func ParseCommand(s string) (Command, error) {
 	switch {
 	case strings.EqualFold(s, "ping"):
 		return PING, nil
+	case strings.EqualFold(s, "get"):
+		return GET, nil
 	default:
 		return 0, ErrUnknownCommand
 	}
@@ -25,6 +28,8 @@ func (cmd Command) String() string {
 	switch cmd {
 	case PING:
 		return "PING"
+	case GET:
+		return "GET"
 	default:
 		panic(ErrUnknownCommand)
 	}
@@ -50,6 +55,10 @@ func ParseOperation(cmdRaw string, args ...string) (Operation, error) {
 		if err := verifyPingArgs(args...); err != nil {
 			return Operation{}, err
 		}
+	case GET:
+		if err := verifyGetArgs(args...); err != nil {
+			return Operation{}, err
+		}
 	}
 
 	op := Operation{
@@ -63,6 +72,13 @@ func ParseOperation(cmdRaw string, args ...string) (Operation, error) {
 func verifyPingArgs(args ...string) error {
 	if len(args) > 1 {
 		return NewWrongNumberOfArguments(PING)
+	}
+	return nil
+}
+
+func verifyGetArgs(args ...string) error {
+	if len(args) != 1 {
+		return NewWrongNumberOfArguments(GET)
 	}
 	return nil
 }
