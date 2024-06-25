@@ -8,7 +8,7 @@ import (
 type Command int
 
 const (
-	_ Command = iota
+	UNKNOWN Command = iota
 	PING
 	GET
 	SET
@@ -28,8 +28,11 @@ func ParseCommand(s string) (Command, error) {
 		return DEL, nil
 	case strings.EqualFold(s, "keys"):
 		return KEYS, nil
+
+	case strings.EqualFold(s, "unknown"):
+		fallthrough
 	default:
-		return 0, ErrUnknownCommand
+		return UNKNOWN, ErrUnknownCommand
 	}
 }
 
@@ -45,8 +48,9 @@ func (cmd Command) String() string {
 		return "DEL"
 	case KEYS:
 		return "KEYS"
+
 	default:
-		panic(ErrUnknownCommand)
+		return "UNKNOWN"
 	}
 }
 
