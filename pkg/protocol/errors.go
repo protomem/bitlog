@@ -11,6 +11,6 @@ func NewErrUnknownCommand(cmd string, args ...string) error {
 	return fmt.Errorf("%w '%s', with args beginning with: %s", ErrUnknownCommand, cmd, fmtArgs(args...))
 }
 
-func NewWrongNumberOfArguments(cmd Command) error {
+func NewErrWrongNumberOfArguments(cmd Command) error {
 	return fmt.Errorf("%w for %s command", ErrWrongNumberOfArguments, quote(cmd.String()))
 }

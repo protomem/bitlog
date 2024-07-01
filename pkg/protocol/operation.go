@@ -102,35 +102,35 @@ func ParseOperation(cmdRaw string, args ...string) (Operation, error) {
 
 func validatePingArgs(args ...string) error {
 	if len(args) > 1 {
-		return NewWrongNumberOfArguments(PING)
+		return NewErrWrongNumberOfArguments(PING)
 	}
 	return nil
 }
 
 func validateGetArgs(args ...string) error {
 	if len(args) != 1 {
-		return NewWrongNumberOfArguments(GET)
+		return NewErrWrongNumberOfArguments(GET)
 	}
 	return nil
 }
 
 func validateSetArgs(args ...string) error {
 	if len(args) != 2 {
-		return NewWrongNumberOfArguments(SET)
+		return NewErrWrongNumberOfArguments(SET)
 	}
 	return nil
 }
 
 func validateDelArgs(args ...string) error {
 	if len(args) == 0 {
-		return NewWrongNumberOfArguments(DEL)
+		return NewErrWrongNumberOfArguments(DEL)
 	}
 	return nil
 }
 
 func validateKeysArgs(args ...string) error {
 	if len(args) != 1 {
-		return NewWrongNumberOfArguments(KEYS)
+		return NewErrWrongNumberOfArguments(KEYS)
 	}
 	return nil
 }
