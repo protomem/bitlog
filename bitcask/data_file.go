@@ -1,6 +1,8 @@
 package bitcask
 
 import (
+	"encoding/binary"
+	"errors"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
@@ -15,10 +17,13 @@ const (
 	_maxFileID = 999999
 )
 
+var ErrInvalidDataSize = errors.New("invalid data size")
+
 type dataFile struct {
-	mux sync.RWMutex
-	id  int
-	f   *os.File
+	mux  sync.RWMutex
+	id   int
+	f    *os.File
+	head int64
 }
 
 func createDataFile(basePath string) (*dataFile, error) {
@@ -31,8 +36,9 @@ func createDataFile(basePath string) (*dataFile, error) {
 	}
 
 	return &dataFile{
-		id: id,
-		f:  f,
+		id:   id,
+		f:    f,
+		head: 0,
 	}, nil
 }
 
@@ -40,6 +46,69 @@ func (f *dataFile) close() error {
 	return f.f.Close()
 }
 
+func (f *dataFile) append(rec dataRecord) (int64, int, error) {
+	f.mux.Lock()
+	defer f.mux.Unlock()
+
+	data := rec.encode()
+	offset := f.head
+
+	written, err := f.f.WriteAt(data, offset)
+	f.head += int64(written)
+
+	return offset, written, err
+}
+
+func (f *dataFile) read(offset int64, size int) (dataRecord, error) {
+	f.mux.RLock()
+	defer f.mux.RUnlock()
+
+	data := make([]byte, size)
+	if _, err := f.f.ReadAt(data, offset); err != nil {
+		return dataRecord{}, err
+	}
+
+	rec := dataRecord{}
+	if err := rec.decode(data); err != nil {
+		return dataRecord{}, err
+	}
+
+	return rec, nil
+}
+
 func genFileID() int {
 	return rand.IntN(_maxFileID-_minFileID) + _minFileID
+}
+
+type dataRecord struct {
+	crc    uint32 // 4 bytes
+	tstamp int64  // 8 bytes
+	key    []byte
+	value  []byte
+}
+
+func (r *dataRecord) encode() []byte {
+	data := make([]byte, 4+8+4+4+len(r.key)+len(r.value))
+
+	binary.LittleEndian.PutUint32(data, r.crc)
+	binary.LittleEndian.PutUint64(data[4:12], uint64(r.tstamp))
+	binary.LittleEndian.PutUint32(data[12:16], uint32(len(r.key)))
+	binary.LittleEndian.PutUint32(data[16:20], uint32(len(r.value)))
+	copy(data[20:20+len(r.key)], r.key)
+	copy(data[20+len(r.key):], r.value)
+
+	return data
+}
+
+func (r *dataRecord) decode(data []byte) error {
+	if len(data) < 20 {
+		return ErrInvalidDataSize
+	}
+
+	r.crc = binary.LittleEndian.Uint32(data)
+	r.tstamp = int64(binary.LittleEndian.Uint64(data[4:12]))
+	r.key = data[20 : 20+binary.LittleEndian.Uint32(data[12:16])]
+	r.value = data[20+binary.LittleEndian.Uint32(data[12:16]):]
+
+	return nil
 }
