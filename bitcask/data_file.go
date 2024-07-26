@@ -1,8 +1,10 @@
 package bitcask
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
@@ -18,7 +20,10 @@ const (
 	_maxFileID = 999999
 )
 
-var ErrInvalidDataSize = errors.New("invalid data size")
+var (
+	ErrInvalidDataSize = errors.New("invalid data size")
+	ErrInvalidData     = errors.New("invalid data")
+)
 
 type dataFile struct {
 	mux  sync.RWMutex
@@ -89,11 +94,21 @@ type dataRecord struct {
 }
 
 func newDataRecord(key, value []byte) dataRecord {
+	crc := crc32.ChecksumIEEE(bytes.Join([][]byte{key, value}, nil))
 	return dataRecord{
+		crc:    crc,
 		tstamp: time.Now().UnixMicro(),
 		key:    key,
 		value:  value,
 	}
+}
+
+func (r *dataRecord) verify() error {
+	crc := crc32.ChecksumIEEE(bytes.Join([][]byte{r.key, r.value}, nil))
+	if crc != r.crc {
+		return ErrInvalidData
+	}
+	return nil
 }
 
 func (r *dataRecord) encode() []byte {

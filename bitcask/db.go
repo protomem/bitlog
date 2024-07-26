@@ -38,6 +38,10 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 		return nil, err
 	}
 
+	if err := data.verify(); err != nil {
+		return nil, err
+	}
+
 	return data.value, nil
 }
 
