@@ -11,9 +11,3 @@ func Open(path string) (*DB, error) {
 		files: []*dataFile{},
 	}, nil
 }
-
-type keyDir struct{}
-
-func newKeyDir() *keyDir {
-	return &keyDir{}
-}
