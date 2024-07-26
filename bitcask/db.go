@@ -17,13 +17,3 @@ type keyDir struct{}
 func newKeyDir() *keyDir {
 	return &keyDir{}
 }
-
-type dataFile struct{}
-
-func openDataFile() (*dataFile, error) {
-	return &dataFile{}, nil
-}
-
-func createDataFile() (*dataFile, error) {
-	return &dataFile{}, nil
-}
