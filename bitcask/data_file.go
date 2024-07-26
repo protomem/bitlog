@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"time"
 )
 
 const (
@@ -85,6 +86,14 @@ type dataRecord struct {
 	tstamp int64  // 8 bytes
 	key    []byte
 	value  []byte
+}
+
+func newDataRecord(key, value []byte) dataRecord {
+	return dataRecord{
+		tstamp: time.Now().UnixMicro(),
+		key:    key,
+		value:  value,
+	}
 }
 
 func (r *dataRecord) encode() []byte {
