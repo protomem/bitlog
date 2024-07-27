@@ -103,6 +103,10 @@ func newDataRecord(key, value []byte) dataRecord {
 	}
 }
 
+func newDataGrave(key []byte) dataRecord {
+	return newDataRecord(key, nil)
+}
+
 func (r *dataRecord) verify() error {
 	crc := crc32.ChecksumIEEE(bytes.Join([][]byte{r.key, r.value}, nil))
 	if crc != r.crc {
@@ -135,4 +139,8 @@ func (r *dataRecord) decode(data []byte) error {
 	r.value = data[20+binary.LittleEndian.Uint32(data[12:16]):]
 
 	return nil
+}
+
+func (r *dataRecord) isGrave() bool {
+	return len(r.value) == 0
 }

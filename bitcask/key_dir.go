@@ -28,6 +28,13 @@ func (d *keyDir) insert(rec keyDirRecord) {
 	d.records[string(rec.key)] = rec
 }
 
+func (d *keyDir) delete(key []byte) {
+	d.mux.Lock()
+	defer d.mux.Unlock()
+
+	delete(d.records, string(key))
+}
+
 type keyDirRecord struct {
 	fid    int
 	key    []byte

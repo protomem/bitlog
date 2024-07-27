@@ -42,6 +42,10 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 		return nil, err
 	}
 
+	if data.isGrave() {
+		return nil, ErrKeyNotFound
+	}
+
 	return data.value, nil
 }
 
@@ -60,6 +64,19 @@ func (db *DB) Put(key, value []byte) error {
 		offset: offset,
 		size:   written,
 	})
+
+	return nil
+}
+
+func (db *DB) Delete(key []byte) error {
+	rec := newDataGrave(key)
+
+	_, _, err := db.file.append(rec)
+	if err != nil {
+		return err
+	}
+
+	db.index.delete(key)
 
 	return nil
 }

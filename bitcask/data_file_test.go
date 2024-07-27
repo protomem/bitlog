@@ -74,6 +74,52 @@ func TestDataFile_AppendRead(t *testing.T) {
 	}
 }
 
+func TestDataFile_AppendReadWithEmptyValue(t *testing.T) {
+	dir := t.TempDir()
+
+	f, err := createDataFile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := f.close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	rec := dataRecord{
+		crc:    1,
+		tstamp: 2,
+		key:    []byte("key"),
+		value:  nil,
+	}
+
+	offset, written, err := f.append(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec2, err := f.read(offset, written)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("rec: %v\nrec2: %v", rec, rec2)
+
+	if rec.crc != rec2.crc {
+		t.Fatal("crc mismatch")
+	}
+	if rec.tstamp != rec2.tstamp {
+		t.Fatal("tstamp mismatch")
+	}
+	if string(rec.key) != string(rec2.key) {
+		t.Fatal("key mismatch")
+	}
+	if rec.value != nil {
+		t.Fatal("value mismatch")
+	}
+}
+
 func TestDataRecord_EncodeDecode(t *testing.T) {
 	rec := dataRecord{
 		crc:    1,

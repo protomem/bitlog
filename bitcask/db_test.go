@@ -52,4 +52,21 @@ func TestDB(t *testing.T) {
 			t.Fatalf("value mismatch")
 		}
 	}
+
+	for _, d := range testData {
+		if err := db.Delete([]byte(d.key)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, d := range testData {
+		_, err := db.Get([]byte(d.key))
+		if err != bitcask.ErrKeyNotFound {
+			if err == nil {
+				t.Fatalf("key should not exist")
+			} else {
+				t.Fatal(err)
+			}
+		}
+	}
 }
