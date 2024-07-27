@@ -4,7 +4,15 @@ import (
 	"errors"
 )
 
-var ErrKeyNotFound = errors.New("key not found")
+const (
+	_minKeySize   = 1
+	_minValueSize = 1
+)
+
+var (
+	ErrKeyNotFound           = errors.New("key not found")
+	ErrInvalidKeyOrValueSize = errors.New("invalid key/value size")
+)
 
 type DB struct {
 	index *keyDir
@@ -28,6 +36,10 @@ func (db *DB) Close() error {
 }
 
 func (db *DB) Get(key []byte) ([]byte, error) {
+	if len(key) < _minKeySize {
+		return nil, ErrInvalidKeyOrValueSize
+	}
+
 	rec, ok := db.index.lookup(key)
 	if !ok {
 		return nil, ErrKeyNotFound
@@ -50,6 +62,10 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 }
 
 func (db *DB) Put(key, value []byte) error {
+	if len(key) < _minKeySize || len(value) < _minValueSize {
+		return ErrInvalidKeyOrValueSize
+	}
+
 	rec := newDataRecord(key, value)
 
 	offset, written, err := db.file.append(rec)
@@ -69,6 +85,10 @@ func (db *DB) Put(key, value []byte) error {
 }
 
 func (db *DB) Delete(key []byte) error {
+	if len(key) < _minKeySize {
+		return ErrInvalidKeyOrValueSize
+	}
+
 	rec := newDataGrave(key)
 
 	_, _, err := db.file.append(rec)
