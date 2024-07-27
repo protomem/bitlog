@@ -35,6 +35,10 @@ func (db *DB) Close() error {
 	return db.file.close()
 }
 
+func (db *DB) Keys() ([][]byte, error) {
+	return db.index.allKeys(), nil
+}
+
 func (db *DB) Get(key []byte) ([]byte, error) {
 	if len(key) < _minKeySize {
 		return nil, ErrInvalidKeyOrValueSize

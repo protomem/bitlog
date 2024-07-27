@@ -13,6 +13,19 @@ func newKeyDir() *keyDir {
 	}
 }
 
+func (d *keyDir) allKeys() [][]byte {
+	d.mux.RLock()
+	defer d.mux.RUnlock()
+
+	keys := make([][]byte, 0, len(d.records))
+
+	for key := range d.records {
+		keys = append(keys, []byte(key))
+	}
+
+	return keys
+}
+
 func (d *keyDir) lookup(key []byte) (keyDirRecord, bool) {
 	d.mux.RLock()
 	defer d.mux.RUnlock()
