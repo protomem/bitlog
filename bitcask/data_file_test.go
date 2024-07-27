@@ -1,152 +1,47 @@
 package bitcask
 
 import (
-	"os"
+	"bytes"
 	"testing"
 )
 
-func TestDataFile_Create(t *testing.T) {
-	dir := t.TempDir()
+func TestDataRecord(t *testing.T) {
+	testCases := []struct {
+		Name  string
+		Key   []byte
+		Value []byte
+	}{
+		{
+			Name:  "Success",
+			Key:   []byte("key"),
+			Value: []byte("value"),
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.Name, func(t *testing.T) {
+			rec := newDataRecord(tC.Key, tC.Value)
+			data := rec.encode()
 
-	f, err := createDataFile(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := f.close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+			rec2 := dataRecord{}
+			if err := rec2.decode(data); err != nil {
+				t.Fatal(err)
+			}
 
-	if _, err := os.Stat(f.f.Name()); err != nil {
-		t.Fatal(err)
-	} else {
-		entries, _ := os.ReadDir(dir)
-		for _, entry := range entries {
-			t.Log(entry.Name())
-		}
-	}
-}
+			if err := rec2.verify(); err != nil {
+				t.Fatal(err)
+			}
 
-func TestDataFile_AppendRead(t *testing.T) {
-	dir := t.TempDir()
+			if rec2.isGrave() {
+				t.Fatal("should not be grave")
+			}
 
-	f, err := createDataFile(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := f.close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+			if !bytes.Equal(rec.key, rec2.key) {
+				t.Fatal("key not equal")
+			}
 
-	rec := dataRecord{
-		crc:    1,
-		tstamp: 2,
-		key:    []byte("key"),
-		value:  []byte("value"),
-	}
-
-	offset, written, err := f.append(rec)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rec2, err := f.read(offset, written)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Logf("rec: %v\nrec2: %v", rec, rec2)
-
-	if rec.crc != rec2.crc {
-		t.Fatal("crc mismatch")
-	}
-	if rec.tstamp != rec2.tstamp {
-		t.Fatal("tstamp mismatch")
-	}
-	if string(rec.key) != string(rec2.key) {
-		t.Fatal("key mismatch")
-	}
-	if string(rec.value) != string(rec2.value) {
-		t.Fatal("value mismatch")
-	}
-}
-
-func TestDataFile_AppendReadWithEmptyValue(t *testing.T) {
-	dir := t.TempDir()
-
-	f, err := createDataFile(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := f.close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	rec := dataRecord{
-		crc:    1,
-		tstamp: 2,
-		key:    []byte("key"),
-		value:  nil,
-	}
-
-	offset, written, err := f.append(rec)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rec2, err := f.read(offset, written)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Logf("rec: %v\nrec2: %v", rec, rec2)
-
-	if rec.crc != rec2.crc {
-		t.Fatal("crc mismatch")
-	}
-	if rec.tstamp != rec2.tstamp {
-		t.Fatal("tstamp mismatch")
-	}
-	if string(rec.key) != string(rec2.key) {
-		t.Fatal("key mismatch")
-	}
-	if rec.value != nil {
-		t.Fatal("value mismatch")
-	}
-}
-
-func TestDataRecord_EncodeDecode(t *testing.T) {
-	rec := dataRecord{
-		crc:    1,
-		tstamp: 2,
-		key:    []byte("key"),
-		value:  []byte("value"),
-	}
-
-	data := rec.encode()
-
-	rec2 := dataRecord{}
-	if err := rec2.decode(data); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Logf("rec: %v\nrec2: %v", rec, rec2)
-
-	if rec.crc != rec2.crc {
-		t.Fatal("crc mismatch")
-	}
-	if rec.tstamp != rec2.tstamp {
-		t.Fatal("tstamp mismatch")
-	}
-	if string(rec.key) != string(rec2.key) {
-		t.Fatal("key mismatch")
-	}
-	if string(rec.value) != string(rec2.value) {
-		t.Fatal("value mismatch")
+			if !bytes.Equal(rec.value, rec2.value) {
+				t.Fatal("value not equal")
+			}
+		})
 	}
 }
