@@ -6,67 +6,61 @@ import (
 	"github.com/protomem/bitlog/bitcask"
 )
 
-func TestDB(t *testing.T) {
-	dir := t.TempDir()
+func FuzzDB(f *testing.F) {
+	dir := f.TempDir()
 
 	db, err := bitcask.Open(dir)
 	if err != nil {
-		t.Fatal(err)
+		f.Fatal(err)
 	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 
-	testData := []struct {
-		key   string
-		value string
+	testCases := []struct {
+		Key   []byte
+		Value []byte
 	}{
 		{
-			key:   "key",
-			value: "value",
+			Key:   []byte("key"),
+			Value: []byte("value"),
 		},
 		{
-			key:   "key2",
-			value: "value2",
+			Key:   nil,
+			Value: nil,
 		},
 		{
-			key:   "key3",
-			value: "value3",
+			Key:   []byte("key"),
+			Value: nil,
+		},
+		{
+			Key:   nil,
+			Value: []byte("value"),
 		},
 	}
-
-	for _, d := range testData {
-		if err := db.Put([]byte(d.key), []byte(d.value)); err != nil {
-			t.Fatal(err)
-		}
+	for _, tC := range testCases {
+		f.Add(tC.Key, tC.Value)
 	}
 
-	for _, d := range testData {
-		value, err := db.Get([]byte(d.key))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(value) != d.value {
-			t.Fatalf("value mismatch")
-		}
-	}
-
-	for _, d := range testData {
-		if err := db.Delete([]byte(d.key)); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	for _, d := range testData {
-		_, err := db.Get([]byte(d.key))
-		if err != bitcask.ErrKeyNotFound {
-			if err == nil {
-				t.Fatalf("key should not exist")
-			} else {
-				t.Fatal(err)
+	f.Fuzz(func(t *testing.T, testKey []byte, testValue []byte) {
+		if err := db.Put(testKey, testValue); err != nil {
+			if err == bitcask.ErrInvalidKeyOrValueSize &&
+				(len(testKey) == 0 || len(testValue) == 0) {
+				return
 			}
+
+			t.Fatal(err)
 		}
-	}
+
+		if value, err := db.Get(testKey); err != nil {
+			t.Fatal(err)
+		} else if string(value) != string(testValue) {
+			t.Fatal("value mismatch")
+		}
+
+		if err := db.Delete(testKey); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := db.Get(testKey); err != bitcask.ErrKeyNotFound {
+			t.Fatal("key should not exist")
+		}
+	})
 }
