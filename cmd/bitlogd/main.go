@@ -2,12 +2,13 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"log"
 	"net"
-	"strings"
 
 	"github.com/protomem/bitlog/bitcask"
+	"github.com/protomem/bitlog/proto"
 )
 
 var (
@@ -55,84 +56,79 @@ func main() {
 			for s.Scan() {
 				if err := s.Err(); err != nil {
 					log.Printf("failed to scan: %v", err)
-					w.Write([]byte("ERROR\r\n"))
+					proto.Error(w, err.Error())
 					w.Flush()
 					break
 				}
 
-				req := s.Text()
-				reqParts := strings.Split(req, " ")
+				req := s.Bytes()
+				reqParts := bytes.Split(req, []byte{' '})
 
-				switch reqParts[0] {
-				case "GET":
+				var cmd proto.Command
+				cmd.UnmarshalText(reqParts[0])
+				if cmd == proto.UNKNOWN {
+					log.Printf("unknown command: %s", string(reqParts[0]))
+					proto.Error(w, "Unknown command")
+					w.Flush()
+					continue
+				}
+
+				switch cmd {
+				case proto.PING:
+					proto.Pong(w)
+					w.Flush()
+				case proto.GET:
 					if len(reqParts) != 2 {
-						log.Printf("invalid request: %s", req)
-						w.Write([]byte("ERROR\r\n"))
+						proto.Error(w, "Not enough arguments")
 						w.Flush()
 						continue
 					}
-
 					key := reqParts[1]
-					value, err := db.Get([]byte(key))
+					value, err := db.Get(key)
 					if err != nil {
 						if err == bitcask.ErrKeyNotFound {
-							w.Write([]byte("NOT_FOUND\r\n"))
+							proto.Null(w)
 							w.Flush()
 							continue
 						}
 
-						log.Printf("failed to get: %v", err)
-						w.Write([]byte("ERROR\r\n"))
+						proto.Error(w, err.Error())
 						w.Flush()
 						continue
 					}
-
-					w.Write([]byte("VALUE " + key + " " + string(value) + "\r\n"))
+					proto.BulkString(w, string(value))
 					w.Flush()
-				case "SET":
+				case proto.SET:
 					if len(reqParts) != 3 {
-						log.Printf("invalid request: %s", req)
-						w.Write([]byte("ERROR\r\n"))
+						proto.Error(w, "Not enough arguments")
 						w.Flush()
 						continue
 					}
-
 					key := reqParts[1]
 					value := reqParts[2]
-
-					if err := db.Put([]byte(key), []byte(value)); err != nil {
-						log.Printf("failed to put: %v", err)
-						w.Write([]byte("ERROR\r\n"))
+					if err := db.Put(key, value); err != nil {
+						proto.Error(w, err.Error())
 						w.Flush()
 						continue
 					}
-
-					w.Write([]byte("STORED\r\n"))
+					proto.OK(w)
 					w.Flush()
-				case "DEL":
+				case proto.DEL:
 					if len(reqParts) != 2 {
-						log.Printf("invalid request: %s", req)
-						w.Write([]byte("ERROR\r\n"))
+						proto.Error(w, "Not enough arguments")
 						w.Flush()
 						continue
 					}
-
 					key := reqParts[1]
-
-					if err := db.Delete([]byte(key)); err != nil {
-						log.Printf("failed to delete: %v", err)
-						w.Write([]byte("ERROR\r\n"))
+					if err := db.Delete(key); err != nil {
+						proto.Error(w, err.Error())
 						w.Flush()
 						continue
 					}
-
-					w.Write([]byte("DELETED\r\n"))
-					w.Flush()
-				default:
-					log.Printf("invalid request: %s", req)
-					w.Write([]byte("ERROR\r\n"))
+					proto.Int(w, 1)
 					w.Flush()
 				}
+
 			}
 		}(conn)
 	}
