@@ -77,7 +77,7 @@ func (db *DB) Put(key, value []byte) error {
 		return err
 	}
 
-	db.index.insert(keyDirRecord{
+	db.index.insert(idxRecord{
 		fid:    db.file.id,
 		key:    key,
 		tstamp: rec.tstamp,

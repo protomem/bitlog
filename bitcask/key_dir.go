@@ -4,12 +4,12 @@ import "sync"
 
 type keyDir struct {
 	mux     sync.RWMutex
-	records map[string]keyDirRecord
+	records map[string]idxRecord
 }
 
 func newKeyDir() *keyDir {
 	return &keyDir{
-		records: make(map[string]keyDirRecord),
+		records: make(map[string]idxRecord),
 	}
 }
 
@@ -26,7 +26,7 @@ func (d *keyDir) allKeys() [][]byte {
 	return keys
 }
 
-func (d *keyDir) lookup(key []byte) (keyDirRecord, bool) {
+func (d *keyDir) lookup(key []byte) (idxRecord, bool) {
 	d.mux.RLock()
 	defer d.mux.RUnlock()
 
@@ -34,7 +34,7 @@ func (d *keyDir) lookup(key []byte) (keyDirRecord, bool) {
 	return rec, ok
 }
 
-func (d *keyDir) insert(rec keyDirRecord) {
+func (d *keyDir) insert(rec idxRecord) {
 	d.mux.Lock()
 	defer d.mux.Unlock()
 
@@ -48,7 +48,7 @@ func (d *keyDir) delete(key []byte) {
 	delete(d.records, string(key))
 }
 
-type keyDirRecord struct {
+type idxRecord struct {
 	fid    int
 	key    []byte
 	tstamp int64
