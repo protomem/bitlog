@@ -2,6 +2,7 @@ package bitcask
 
 import (
 	"errors"
+	"os"
 )
 
 const (
@@ -20,6 +21,10 @@ type DB struct {
 }
 
 func Open(path string) (*DB, error) {
+	if err := createDirIfNotExists(path); err != nil {
+		return nil, err
+	}
+
 	f, err := createDataFile(path)
 	if err != nil {
 		return nil, err
@@ -103,4 +108,8 @@ func (db *DB) Delete(key []byte) error {
 	db.index.delete(key)
 
 	return nil
+}
+
+func createDirIfNotExists(path string) error {
+	return os.MkdirAll(path, 0o755)
 }
