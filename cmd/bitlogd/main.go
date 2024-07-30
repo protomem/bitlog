@@ -73,6 +73,35 @@ func main() {
 			switch cmd {
 			case proto.PING:
 				proto.Pong(w)
+			case proto.KEYS: // TODO: support key pattern
+				if len(reqParts) != 2 {
+					errMsg := newWrongNumberOfArgumentsError(string(reqParts[0]))
+					log.Println(errMsg)
+					proto.Error(w, errMsg)
+					goto FLUSH
+				}
+
+				keyPattern := reqParts[1]
+				if keyPattern[0] != '*' {
+					errMsg := "unsupported key pattern '" + string(keyPattern) + "'"
+					log.Println(errMsg)
+					proto.Error(w, errMsg)
+					goto FLUSH
+				}
+
+				keys, err := db.Keys()
+				if err != nil {
+					log.Printf("failed to get keys: %v", err)
+					proto.Error(w, "unexpected error")
+					goto FLUSH
+				}
+
+				if len(keys) == 0 {
+					proto.Null(w)
+					goto FLUSH
+				}
+
+				proto.Array(w, bytesToStrings(keys))
 			case proto.GET:
 				if len(reqParts) != 2 {
 					errMsg := newWrongNumberOfArgumentsError(string(reqParts[0]))
