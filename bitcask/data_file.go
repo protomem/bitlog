@@ -1,10 +1,12 @@
 package bitcask
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
 	"hash/crc32"
+	"io"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
@@ -42,15 +44,20 @@ func createDataFile(basePath string) (*dataFile, error) {
 		return nil, err
 	}
 
+	stat, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
 	return &dataFile{
 		id:   id,
 		f:    f,
-		head: 0,
+		head: stat.Size(),
 	}, nil
 }
 
 func openDataFile(filename string) (*dataFile, error) {
-	f, err := os.OpenFile(filename, os.O_RDWR, 0o644)
+	f, err := os.OpenFile(filename, os.O_RDONLY, 0o644)
 	if err != nil {
 		return nil, err
 	}
@@ -101,6 +108,36 @@ func (f *dataFile) read(offset int64, size int) (dataRecord, error) {
 	}
 
 	return rec, nil
+}
+
+func (f *dataFile) foreach(fn func(data dataRecord, offset int64, size int) error) error {
+	f.mux.RLock()
+	defer f.mux.RUnlock()
+
+	var (
+		offset int64
+		r      = bufio.NewReader(f.f)
+	)
+
+	for offset <= f.head {
+		var rec dataRecord
+		read, err := rec.streamDecode(r)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+
+			return err
+		}
+
+		if err := fn(rec, offset, read); err != nil {
+			return err
+		}
+
+		offset += int64(read)
+	}
+
+	return nil
 }
 
 func genFileID() int {
@@ -176,6 +213,40 @@ func (r *dataRecord) decode(data []byte) error {
 	r.value = data[20+binary.LittleEndian.Uint32(data[12:16]):]
 
 	return nil
+}
+
+func (r *dataRecord) streamDecode(src io.Reader) (int, error) {
+	header := make([]byte, 20)
+
+	var (
+		read      int
+		totalRead int
+		err       error
+	)
+
+	read, err = src.Read(header)
+	if err != nil {
+		return 0, err
+	}
+	totalRead += read
+
+	r.crc = binary.LittleEndian.Uint32(header)
+	r.tstamp = int64(binary.LittleEndian.Uint64(header[4:12]))
+
+	keySize := binary.LittleEndian.Uint32(header[12:16])
+	valueSize := binary.LittleEndian.Uint32(header[16:20])
+
+	data := make([]byte, keySize+valueSize)
+	read, err = src.Read(data)
+	if err != nil {
+		return 0, err
+	}
+	totalRead += read
+
+	r.key = data[:keySize]
+	r.value = data[keySize:]
+
+	return totalRead, nil
 }
 
 func (r *dataRecord) isGrave() bool {

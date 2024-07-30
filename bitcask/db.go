@@ -23,7 +23,7 @@ type DB struct {
 	index *keyDir
 
 	mux   sync.RWMutex
-	files []*dataFile
+	files map[int]*dataFile
 }
 
 func Open(path string) (*DB, error) {
@@ -41,10 +41,17 @@ func Open(path string) (*DB, error) {
 	db := &DB{
 		basePath: path,
 		index:    newKeyDir(),
-		files:    []*dataFile{active},
+		files:    map[int]*dataFile{},
 	}
 
+	db.files[active.id] = active
+	db.files[0] = active
+
 	if err := db.openOlderFiles(); err != nil {
+		return nil, err
+	}
+
+	if err := db.indexing(); err != nil {
 		return nil, err
 	}
 
@@ -75,13 +82,12 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 		return nil, ErrInvalidKeyOrValueSize
 	}
 
-	file := db.activeFile()
-
 	rec, ok := db.index.lookup(key)
 	if !ok {
 		return nil, ErrKeyNotFound
 	}
 
+	file := db.file(rec.fid)
 	data, err := file.read(rec.offset, rec.size)
 	if err != nil {
 		return nil, err
@@ -154,12 +160,48 @@ func (db *DB) openOlderFiles() error {
 			continue
 		}
 
+		if db.files[0].f.Name() == entry.Name() {
+			continue
+		}
+
 		file, err := openDataFile(filepath.Join(db.basePath, entry.Name()))
 		if err != nil {
 			return err
 		}
 
-		db.files = append(db.files, file)
+		db.files[file.id] = file
+	}
+
+	return nil
+}
+
+func (db *DB) indexing() error {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	for _, file := range db.files {
+		if err := file.foreach(func(data dataRecord, offset int64, size int) error {
+			if err := data.verify(); err != nil {
+				return err
+			}
+
+			if data.isGrave() {
+				db.index.delete(data.key)
+				return nil
+			}
+
+			db.index.insert(idxRecord{
+				fid:    file.id,
+				key:    data.key,
+				tstamp: data.tstamp,
+				offset: offset,
+				size:   size,
+			})
+
+			return nil
+		}); err != nil {
+			return err
+		}
 	}
 
 	return nil
