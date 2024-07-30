@@ -5,6 +5,50 @@ import (
 	"testing"
 )
 
+func TestDataFile_Foreach(t *testing.T) {
+	var err error
+
+	dir := t.TempDir()
+	file, err := createDataFile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testData := []dataRecord{
+		newDataRecord([]byte("key1"), []byte("value1_1")),
+		newDataRecord([]byte("key2"), []byte("value2_1")),
+		newDataGrave([]byte("key1")),
+		newDataRecord([]byte("key1"), []byte("value1_2")),
+	}
+
+	for _, rec := range testData {
+		_, _, err := file.append(rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	recs := make([]dataRecord, 0)
+	err = file.foreach(func(rec dataRecord, offset int64, size int) error {
+		recs = append(recs, rec)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(recs) != len(testData) {
+		t.Fatal("length actual data and test data does not match")
+	}
+	for i := 0; i < len(testData); i++ {
+		t.Logf("expected: %v, actual: %v", testData[i], recs[i])
+		if (!bytes.Equal(testData[i].key, recs[i].key) || !bytes.Equal(testData[i].value, recs[i].value)) ||
+			(testData[i].isGrave() != recs[i].isGrave()) {
+			t.Logf("expected: %v, actual: %v", testData[i], recs[i])
+		}
+	}
+}
+
 func TestDataRecord(t *testing.T) {
 	testCases := []struct {
 		Name  string

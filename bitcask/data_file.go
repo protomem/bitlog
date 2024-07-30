@@ -1,7 +1,6 @@
 package bitcask
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -44,15 +43,10 @@ func createDataFile(basePath string) (*dataFile, error) {
 		return nil, err
 	}
 
-	stat, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-
 	return &dataFile{
 		id:   id,
 		f:    f,
-		head: stat.Size(),
+		head: 0,
 	}, nil
 }
 
@@ -67,10 +61,15 @@ func openDataFile(filename string) (*dataFile, error) {
 		return nil, err
 	}
 
+	stat, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
 	return &dataFile{
 		id:   id,
 		f:    f,
-		head: 0,
+		head: stat.Size(),
 	}, nil
 }
 
@@ -114,27 +113,35 @@ func (f *dataFile) foreach(fn func(data dataRecord, offset int64, size int) erro
 	f.mux.RLock()
 	defer f.mux.RUnlock()
 
-	var (
-		offset int64
-		r      = bufio.NewReader(f.f)
-	)
+	var offset int64
 
-	for offset <= f.head {
+	for offset < f.head {
 		var rec dataRecord
-		read, err := rec.streamDecode(r)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
 
+		header := make([]byte, 20)
+		if _, err := f.f.ReadAt(header, offset); err != nil {
 			return err
 		}
 
-		if err := fn(rec, offset, read); err != nil {
+		if err := rec.decodeHeader(header); err != nil {
 			return err
 		}
 
-		offset += int64(read)
+		data := make([]byte, len(rec.key)+len(rec.value))
+		if _, err := f.f.ReadAt(data, offset+int64(len(header))); err != nil {
+			return err
+		}
+
+		if err := rec.decodeBody(data); err != nil {
+			return err
+		}
+
+		size := 20 + len(rec.key) + len(rec.value)
+		if err := fn(rec, offset, size); err != nil {
+			return err
+		}
+
+		offset += int64(size)
 	}
 
 	return nil
