@@ -185,6 +185,10 @@ func (db *DB) indexing() error {
 				return err
 			}
 
+			if idx, exists := db.index.lookup(data.key); exists && idx.tstamp > data.tstamp {
+				return nil
+			}
+
 			if data.isGrave() {
 				db.index.delete(data.key)
 				return nil
