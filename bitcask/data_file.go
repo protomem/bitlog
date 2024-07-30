@@ -168,21 +168,26 @@ type dataRecord struct {
 }
 
 func newDataRecord(key, value []byte) dataRecord {
-	crc := crc32.ChecksumIEEE(bytes.Join([][]byte{key, value}, nil))
-	return dataRecord{
-		crc:    crc,
-		tstamp: time.Now().UnixMicro(),
+	now := time.Now().UnixMilli()
+	rec := dataRecord{
+		tstamp: now,
 		key:    key,
 		value:  value,
 	}
+	rec.crc = rec.sign()
+	return rec
 }
 
 func newDataGrave(key []byte) dataRecord {
 	return newDataRecord(key, nil)
 }
 
+func (r *dataRecord) sign() uint32 {
+	return crc32.ChecksumIEEE(bytes.Join([][]byte{int64ToBytes(r.tstamp), r.key, r.value}, nil))
+}
+
 func (r *dataRecord) verify() error {
-	crc := crc32.ChecksumIEEE(bytes.Join([][]byte{r.key, r.value}, nil))
+	crc := r.sign()
 	if crc != r.crc {
 		return ErrInvalidData
 	}
@@ -203,14 +208,39 @@ func (r *dataRecord) encode() []byte {
 }
 
 func (r *dataRecord) decode(data []byte) error {
-	if len(data) < 20 {
+	if err := r.decodeHeader(data[:20]); err != nil {
+		return err
+	}
+
+	if err := r.decodeBody(data[20:]); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *dataRecord) decodeHeader(data []byte) error {
+	if len(data) != 20 {
 		return ErrInvalidDataSize
 	}
 
 	r.crc = binary.LittleEndian.Uint32(data)
 	r.tstamp = int64(binary.LittleEndian.Uint64(data[4:12]))
-	r.key = data[20 : 20+binary.LittleEndian.Uint32(data[12:16])]
-	r.value = data[20+binary.LittleEndian.Uint32(data[12:16]):]
+	r.key = make([]byte, binary.LittleEndian.Uint32(data[12:16]))
+	r.value = make([]byte, binary.LittleEndian.Uint32(data[16:20]))
+
+	return nil
+}
+
+func (r *dataRecord) decodeBody(data []byte) error {
+	if len(data) != len(r.key)+len(r.value) {
+		return ErrInvalidDataSize
+	}
+
+	copy(r.key, data)
+	if len(r.value) > 0 {
+		copy(r.value, data[len(r.key):])
+	}
 
 	return nil
 }
@@ -251,4 +281,10 @@ func (r *dataRecord) streamDecode(src io.Reader) (int, error) {
 
 func (r *dataRecord) isGrave() bool {
 	return len(r.value) == 0
+}
+
+func int64ToBytes(i int64) []byte {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, uint64(i))
+	return b
 }

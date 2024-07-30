@@ -10,11 +10,19 @@ func TestDataRecord(t *testing.T) {
 		Name  string
 		Key   []byte
 		Value []byte
+		Grave bool
 	}{
 		{
 			Name:  "Success",
 			Key:   []byte("key"),
 			Value: []byte("value"),
+			Grave: false,
+		},
+		{
+			Name:  "Seccess: Grave",
+			Key:   []byte("key"),
+			Value: []byte{},
+			Grave: true,
 		},
 	}
 	for _, tC := range testCases {
@@ -31,7 +39,7 @@ func TestDataRecord(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if rec2.isGrave() {
+			if rec2.isGrave() != tC.Grave {
 				t.Fatal("should not be grave")
 			}
 
