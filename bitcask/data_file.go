@@ -23,6 +23,7 @@ const (
 var (
 	ErrInvalidDataSize = errors.New("invalid data size")
 	ErrInvalidData     = errors.New("invalid data")
+	ErrInvalidFile     = errors.New("invalid file")
 )
 
 type dataFile struct {
@@ -48,7 +49,27 @@ func createDataFile(basePath string) (*dataFile, error) {
 	}, nil
 }
 
+func openDataFile(filename string) (*dataFile, error) {
+	f, err := os.OpenFile(filename, os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, err
+	}
+
+	id, err := parseFilename(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dataFile{
+		id:   id,
+		f:    f,
+		head: 0,
+	}, nil
+}
+
 func (f *dataFile) close() error {
+	f.mux.Lock()
+	defer f.mux.Unlock()
 	return f.f.Close()
 }
 
@@ -84,6 +105,22 @@ func (f *dataFile) read(offset int64, size int) (dataRecord, error) {
 
 func genFileID() int {
 	return rand.IntN(_maxFileID-_minFileID) + _minFileID
+}
+
+func parseFilename(filename string) (fid int, err error) {
+	base := filepath.Base(filename)
+	if ext := filepath.Ext(base); ext != _dataFileExt {
+		return 0, ErrInvalidFile
+	}
+
+	base = base[:len(base)-len(_dataFileExt)]
+
+	fid, err = strconv.Atoi(base)
+	if err != nil {
+		return 0, ErrInvalidFile
+	}
+
+	return fid, nil
 }
 
 type dataRecord struct {

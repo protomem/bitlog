@@ -3,6 +3,8 @@ package bitcask
 import (
 	"errors"
 	"os"
+	"path/filepath"
+	"sync"
 )
 
 const (
@@ -16,28 +18,52 @@ var (
 )
 
 type DB struct {
+	basePath string
+
 	index *keyDir
-	file  *dataFile
+
+	mux   sync.RWMutex
+	files []*dataFile
 }
 
 func Open(path string) (*DB, error) {
+	path = filepath.Clean(path)
+
 	if err := createDirIfNotExists(path); err != nil {
 		return nil, err
 	}
 
-	f, err := createDataFile(path)
+	active, err := createDataFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	return &DB{
-		index: newKeyDir(),
-		file:  f,
-	}, nil
+	db := &DB{
+		basePath: path,
+		index:    newKeyDir(),
+		files:    []*dataFile{active},
+	}
+
+	if err := db.openOlderFiles(); err != nil {
+		return nil, err
+	}
+
+	return db, nil
 }
 
 func (db *DB) Close() error {
-	return db.file.close()
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	var errs error
+
+	for _, f := range db.files {
+		if err := f.close(); err != nil {
+			errs = errors.Join(errs, err)
+		}
+	}
+
+	return errs
 }
 
 func (db *DB) Keys() ([][]byte, error) {
@@ -49,12 +75,14 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 		return nil, ErrInvalidKeyOrValueSize
 	}
 
+	file := db.activeFile()
+
 	rec, ok := db.index.lookup(key)
 	if !ok {
 		return nil, ErrKeyNotFound
 	}
 
-	data, err := db.file.read(rec.offset, rec.size)
+	data, err := file.read(rec.offset, rec.size)
 	if err != nil {
 		return nil, err
 	}
@@ -75,15 +103,16 @@ func (db *DB) Put(key, value []byte) error {
 		return ErrInvalidKeyOrValueSize
 	}
 
+	file := db.activeFile()
 	rec := newDataRecord(key, value)
 
-	offset, written, err := db.file.append(rec)
+	offset, written, err := file.append(rec)
 	if err != nil {
 		return err
 	}
 
 	db.index.insert(idxRecord{
-		fid:    db.file.id,
+		fid:    db.activeFile().id,
 		key:    key,
 		tstamp: rec.tstamp,
 		offset: offset,
@@ -98,16 +127,52 @@ func (db *DB) Delete(key []byte) error {
 		return ErrInvalidKeyOrValueSize
 	}
 
+	file := db.activeFile()
 	rec := newDataGrave(key)
 
-	_, _, err := db.file.append(rec)
+	db.index.delete(key)
+
+	_, _, err := file.append(rec)
 	if err != nil {
 		return err
 	}
 
-	db.index.delete(key)
+	return nil
+}
+
+func (db *DB) openOlderFiles() error {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	dirEntries, err := os.ReadDir(db.basePath)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range dirEntries {
+		if entry.IsDir() {
+			continue
+		}
+
+		file, err := openDataFile(filepath.Join(db.basePath, entry.Name()))
+		if err != nil {
+			return err
+		}
+
+		db.files = append(db.files, file)
+	}
 
 	return nil
+}
+
+func (db *DB) file(id int) *dataFile {
+	db.mux.RLock()
+	defer db.mux.RUnlock()
+	return db.files[id]
+}
+
+func (db *DB) activeFile() *dataFile {
+	return db.file(0)
 }
 
 func createDirIfNotExists(path string) error {
