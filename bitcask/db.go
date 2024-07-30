@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 )
 
@@ -179,23 +180,24 @@ func (db *DB) indexing() error {
 	db.mux.Lock()
 	defer db.mux.Unlock()
 
-	for _, file := range db.files {
-		if err := file.foreach(func(data dataRecord, offset int64, size int) error {
-			if err := data.verify(); err != nil {
-				return err
-			}
+	files := make([]*dataFile, 0, len(db.files))
+	for _, f := range db.files {
+		files = append(files, f)
+	}
 
-			if idx, exists := db.index.lookup(data.key); exists && idx.tstamp > data.tstamp {
-				return nil
-			}
+	slices.SortFunc(files, func(a, b *dataFile) int {
+		return int(a.tstamp - b.tstamp)
+	})
 
+	for _, f := range files {
+		if err := f.foreach(func(data dataRecord, offset int64, size int) error {
 			if data.isGrave() {
 				db.index.delete(data.key)
 				return nil
 			}
 
 			db.index.insert(idxRecord{
-				fid:    file.id,
+				fid:    f.id,
 				key:    data.key,
 				tstamp: data.tstamp,
 				offset: offset,

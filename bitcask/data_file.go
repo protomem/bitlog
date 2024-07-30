@@ -28,10 +28,11 @@ var (
 )
 
 type dataFile struct {
-	mux  sync.RWMutex
-	id   int
-	f    *os.File
-	head int64
+	mux    sync.RWMutex
+	id     int
+	f      *os.File
+	head   int64
+	tstamp int64
 }
 
 func createDataFile(basePath string) (*dataFile, error) {
@@ -43,10 +44,16 @@ func createDataFile(basePath string) (*dataFile, error) {
 		return nil, err
 	}
 
+	stat, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
 	return &dataFile{
-		id:   id,
-		f:    f,
-		head: 0,
+		id:     id,
+		f:      f,
+		head:   0,
+		tstamp: stat.ModTime().Unix(),
 	}, nil
 }
 
@@ -67,9 +74,10 @@ func openDataFile(filename string) (*dataFile, error) {
 	}
 
 	return &dataFile{
-		id:   id,
-		f:    f,
-		head: stat.Size(),
+		id:     id,
+		f:      f,
+		head:   stat.Size(),
+		tstamp: stat.ModTime().Unix(),
 	}, nil
 }
 
