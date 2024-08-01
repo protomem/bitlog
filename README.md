@@ -4,7 +4,8 @@ Key-Value база данных на базе bitcask, совместимая с
 
 # TODO
 
-- [ ] LibAPI: Storage
+- [X] LibAPI: Define API
+- [ ] LibAPI: DB
 - [ ] LibAPI: Client 
 - [X] Bitcask: Data File
 - [X] Bitcask: Key Dir (Map)
