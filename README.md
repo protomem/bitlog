@@ -11,13 +11,22 @@ Key-Value база данных на базе bitcask, совместимая с
 - [ ] Bitcask: Key Dir (Tree or SkipList)
 - [ ] Bitcask: Hint File
 - [ ] Bitcask: Merge Data Files
-- [X] API: TCP Server
+- [X] Network: TCP Server
+- [ ] Network: TCP Client
 - [ ] API: Commands
     - [X] `KEYS`
     - [X] `PING`
     - [X] `GET`
     - [X] `SET`
     - [X] DEL
+    - [ ]
+- [ ] API: Types
+    - [X] Int
+    - [X] String
+    - [X] BulkString
+    - [X] Error
+    - [X] Array (only String)
+    - [ ]
 - [X] CLI: Server
 - [ ] CLI: Client
 
