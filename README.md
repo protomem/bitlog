@@ -12,7 +12,7 @@ Key-Value база данных на базе bitcask, совместимая с
 - [ ] Bitcask: Hint File
 - [ ] Bitcask: Merge Data Files
 - [X] Network: TCP Server
-- [ ] Network: TCP Client
+- [X] Network: TCP Client (only with single conn)
 - [ ] API: Commands
     - [X] `KEYS`
     - [X] `PING`
