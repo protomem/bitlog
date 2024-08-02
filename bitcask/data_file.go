@@ -125,31 +125,15 @@ func (f *dataFile) foreach(fn func(data dataRecord, offset int64, size int) erro
 
 	for offset < f.head {
 		var rec dataRecord
-
-		header := make([]byte, 20)
-		if _, err := f.f.ReadAt(header, offset); err != nil {
+		if err := rec.streamDecode(f.f); err != nil {
 			return err
 		}
 
-		if err := rec.decodeHeader(header); err != nil {
+		if err := fn(rec, offset, rec.size()); err != nil {
 			return err
 		}
 
-		data := make([]byte, len(rec.key)+len(rec.value))
-		if _, err := f.f.ReadAt(data, offset+int64(len(header))); err != nil {
-			return err
-		}
-
-		if err := rec.decodeBody(data); err != nil {
-			return err
-		}
-
-		size := 20 + len(rec.key) + len(rec.value)
-		if err := fn(rec, offset, size); err != nil {
-			return err
-		}
-
-		offset += int64(size)
+		offset += int64(rec.size())
 	}
 
 	return nil
@@ -197,6 +181,18 @@ func newDataGrave(key []byte) dataRecord {
 	return newDataRecord(key, nil)
 }
 
+func (r *dataRecord) sizeHeader() int {
+	return 20
+}
+
+func (r *dataRecord) sizeBody() int {
+	return len(r.key) + len(r.value)
+}
+
+func (r *dataRecord) size() int {
+	return r.sizeHeader() + r.sizeBody()
+}
+
 func (r *dataRecord) sign() uint32 {
 	return crc32.ChecksumIEEE(bytes.Join([][]byte{int64ToBytes(r.tstamp), r.key, r.value}, nil))
 }
@@ -210,7 +206,7 @@ func (r *dataRecord) verify() error {
 }
 
 func (r *dataRecord) encode() []byte {
-	data := make([]byte, 4+8+4+4+len(r.key)+len(r.value))
+	data := make([]byte, r.size())
 
 	binary.LittleEndian.PutUint32(data, r.crc)
 	binary.LittleEndian.PutUint64(data[4:12], uint64(r.tstamp))
@@ -223,11 +219,11 @@ func (r *dataRecord) encode() []byte {
 }
 
 func (r *dataRecord) decode(data []byte) error {
-	if err := r.decodeHeader(data[:20]); err != nil {
+	if err := r.decodeHeader(data[:r.sizeHeader()]); err != nil {
 		return err
 	}
 
-	if err := r.decodeBody(data[20:]); err != nil {
+	if err := r.decodeBody(data[r.sizeHeader():]); err != nil {
 		return err
 	}
 
@@ -235,7 +231,7 @@ func (r *dataRecord) decode(data []byte) error {
 }
 
 func (r *dataRecord) decodeHeader(data []byte) error {
-	if len(data) != 20 {
+	if len(data) != r.sizeHeader() {
 		return ErrInvalidDataSize
 	}
 
@@ -248,7 +244,7 @@ func (r *dataRecord) decodeHeader(data []byte) error {
 }
 
 func (r *dataRecord) decodeBody(data []byte) error {
-	if len(data) != len(r.key)+len(r.value) {
+	if len(data) != r.sizeBody() {
 		return ErrInvalidDataSize
 	}
 
@@ -260,38 +256,26 @@ func (r *dataRecord) decodeBody(data []byte) error {
 	return nil
 }
 
-func (r *dataRecord) streamDecode(src io.Reader) (int, error) {
-	header := make([]byte, 20)
-
-	var (
-		read      int
-		totalRead int
-		err       error
-	)
-
-	read, err = src.Read(header)
-	if err != nil {
-		return 0, err
+func (r *dataRecord) streamDecode(src io.Reader) error {
+	header := make([]byte, r.sizeHeader())
+	if _, err := src.Read(header); err != nil {
+		return nil
 	}
-	totalRead += read
 
-	r.crc = binary.LittleEndian.Uint32(header)
-	r.tstamp = int64(binary.LittleEndian.Uint64(header[4:12]))
-
-	keySize := binary.LittleEndian.Uint32(header[12:16])
-	valueSize := binary.LittleEndian.Uint32(header[16:20])
-
-	data := make([]byte, keySize+valueSize)
-	read, err = src.Read(data)
-	if err != nil {
-		return 0, err
+	if err := r.decodeHeader(header); err != nil {
+		return err
 	}
-	totalRead += read
 
-	r.key = data[:keySize]
-	r.value = data[keySize:]
+	body := make([]byte, r.sizeBody())
+	if _, err := src.Read(body); err != nil {
+		return err
+	}
 
-	return totalRead, nil
+	if err := r.decodeBody(body); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r *dataRecord) isGrave() bool {
