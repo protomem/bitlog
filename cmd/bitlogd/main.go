@@ -96,11 +96,6 @@ func main() {
 					goto FLUSH
 				}
 
-				if len(keys) == 0 {
-					proto.Null(w)
-					goto FLUSH
-				}
-
 				proto.Array(w, bytesToStrings(keys))
 			case proto.GET:
 				if len(reqParts) != 2 {
