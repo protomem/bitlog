@@ -24,8 +24,10 @@ const (
 )
 
 var (
-	ErrWrongBytes = errors.New("wrong bytes")
-	ErrWrongFile  = errors.New("wrong file")
+	ErrWrongBytes   = errors.New("wrong bytes")
+	ErrWrongFile    = errors.New("wrong file")
+	ErrFileNotFound = errors.New("file not found")
+	ErrInvalidValue = errors.New("invalid value")
 )
 
 type SSTable struct {
@@ -98,6 +100,29 @@ func (t *SSTable) Remove(id int64) {
 func (t *SSTable) LoadAllFiles() error {
 	// TODO: Implement
 	return nil
+}
+
+func (t *SSTable) Close() error {
+	t.mux.Lock()
+	defer t.mux.Unlock()
+
+	files := make([]*BlobFile, 0, len(t.table))
+	for id, file := range t.table {
+		if id == _activeFile {
+			continue
+		}
+
+		files = append(files, file)
+	}
+
+	t.table = make(map[int64]*BlobFile)
+
+	var errs error
+	for _, file := range files {
+		errs = errors.Join(errs, file.Close())
+	}
+
+	return errs
 }
 
 type Cursor struct {
@@ -240,6 +265,10 @@ func NewBlob(created, expired time.Time, key, value []byte) *Blob {
 	}
 	blob.CRC = blob.Sign()
 	return blob
+}
+
+func NewBlobGrave(created time.Time, key []byte) *Blob {
+	return NewBlob(created, time.Time{}, key, []byte{})
 }
 
 func (b *Blob) Sign() uint64 {
