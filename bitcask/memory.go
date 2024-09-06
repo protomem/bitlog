@@ -20,6 +20,23 @@ func NewMemTable() *MemTable {
 	}
 }
 
+func (t *MemTable) Keys() [][]byte {
+	t.mux.RLock()
+	defer t.mux.RUnlock()
+
+	if len(t.table) == 0 {
+		return nil
+	}
+
+	keys := make([][]byte, 0, len(t.table))
+	for _, value := range t.table {
+		copyKey := append([]byte{}, value.Key...)
+		keys = append(keys, copyKey)
+	}
+
+	return keys
+}
+
 func (t *MemTable) Find(key []byte) (Index, bool) {
 	t.mux.RLock()
 	defer t.mux.RUnlock()
@@ -46,11 +63,27 @@ func (t *MemTable) Remove(key []byte) {
 	delete(t.table, hashKey)
 }
 
+func (t *MemTable) Clear() {
+	t.mux.Lock()
+	defer t.mux.Unlock()
+
+	t.table = make(map[uint64]Index)
+}
+
 type Index struct {
 	File    int64
 	Created time.Time
 	Key     []byte
 	Value   Cursor
+}
+
+func NewIndex(file int64, created time.Time, key []byte, value Cursor) Index {
+	return Index{
+		File:    file,
+		Created: created,
+		Key:     key,
+		Value:   value,
+	}
 }
 
 func (idx Index) Clone() Index {
