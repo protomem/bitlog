@@ -66,7 +66,7 @@ func (t *SSTable) SetActive(file *BlobFile) {
 }
 
 func (t *SSTable) Get(id int64) *BlobFile {
-	t.mux.RUnlock()
+	t.mux.RLock()
 	defer t.mux.RUnlock()
 
 	file, ok := t.table[id]
@@ -303,7 +303,7 @@ func (b *Blob) IsGrave() bool {
 }
 
 func (b *Blob) IsExpired() bool {
-	return b.Expired != time.Time{} && b.Created.After(b.Expired)
+	return b.Expired != time.Time{} && b.Expired.After(b.Created)
 }
 
 type fileReader struct {
