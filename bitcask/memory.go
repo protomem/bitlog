@@ -74,15 +74,15 @@ type Index struct {
 	File    int64
 	Created time.Time
 	Key     []byte
-	Value   Cursor
+	Cursor  Cursor
 }
 
-func NewIndex(file int64, created time.Time, key []byte, value Cursor) Index {
+func NewIndex(file int64, created time.Time, key []byte, cur Cursor) Index {
 	return Index{
 		File:    file,
 		Created: created,
 		Key:     key,
-		Value:   value,
+		Cursor:  cur,
 	}
 }
 
@@ -91,6 +91,6 @@ func (idx Index) Clone() Index {
 		File:    idx.File,
 		Created: idx.Created,
 		Key:     append([]byte{}, idx.Key...),
-		Value:   idx.Value,
+		Cursor:  idx.Cursor,
 	}
 }
