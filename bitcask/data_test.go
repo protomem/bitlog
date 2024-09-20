@@ -9,60 +9,60 @@ import (
 	"github.com/protomem/bitlog/bitcask"
 )
 
-func TestBlob_SignAndVerify(t *testing.T) {
-	blob := bitcask.NewBlob(time.Now(), time.Now().Add(5*time.Hour), []byte("some_key"), []byte("some_value"))
+func TestDataEntry_SignAndVerify(t *testing.T) {
+	dentry := bitcask.NewDataEntry(time.Now(), time.Now().Add(5*time.Hour), []byte("some_key"), []byte("some_value"))
 
-	blob.CRC = blob.Sign()
-	if !blob.Verify() {
-		t.Fatalf("failed to verify blob(%+v)", blob)
+	dentry.Checksum = dentry.Sign()
+	if !dentry.Verify() {
+		t.Fatalf("failed to verify data entry(%+v)", dentry)
 	}
 }
 
-func TestBlob_Serialization(t *testing.T) {
-	blob := bitcask.NewBlob(time.Now(), time.Now().Add(5*time.Hour), []byte("some_key"), []byte("some_value"))
-	data := blob.Serialize()
+func TestDataEntry_Serialization(t *testing.T) {
+	dentry := bitcask.NewDataEntry(time.Now(), time.Now().Add(5*time.Hour), []byte("some_key"), []byte("some_value"))
+	data := dentry.Serialize()
 
-	decodedBlob := new(bitcask.Blob)
-	if err := decodedBlob.Deserialize(data); err != nil {
-		t.Fatalf("failed to deserialize blob: %v", err)
+	decodedEntry := new(bitcask.DataEntry)
+	if err := decodedEntry.Deserialize(data); err != nil {
+		t.Fatalf("failed to deserialize data entry: %v", err)
 	}
 }
 
-func TestBlobFile_CreateAndOpen(t *testing.T) {
+func TestDataFile_CreateAndOpen(t *testing.T) {
 	path := t.TempDir()
 
 	var (
 		err  error
-		file *bitcask.BlobFile
+		file *bitcask.DataFile
 	)
 
-	file, err = bitcask.CreateBlobFile(path)
+	file, err = bitcask.CreateDataFile(path)
 	if err != nil {
-		t.Fatalf("failed to create blob file in %s: %v", path, err)
+		t.Fatalf("failed to create data file in %s: %v", path, err)
 	}
 
 	if err := file.Close(); err != nil {
-		t.Fatalf("failed to close blob file(%s) after create: %v", file.Name(), err)
+		t.Fatalf("failed to close data file(%s) after create: %v", file.Name(), err)
 	}
 
 	path = file.Name()
 
-	file, err = bitcask.OpenBlobFile(path)
+	file, err = bitcask.OpenDataFile(path)
 	if err != nil {
-		t.Fatalf("failed to open blob file(%s): %v", path, err)
+		t.Fatalf("failed to open data file(%s): %v", path, err)
 	}
 
 	if err := file.Close(); err != nil {
-		t.Fatalf("failed to close blob file(%s) after open: %v", file.Name(), err)
+		t.Fatalf("failed to close data file(%s) after open: %v", file.Name(), err)
 	}
 }
 
-func TestBlobFile_WriteAndRead(t *testing.T) {
+func TestDataFile_WriteAndRead(t *testing.T) {
 	path := t.TempDir()
 
-	file, err := bitcask.CreateBlobFile(path)
+	file, err := bitcask.CreateDataFile(path)
 	if err != nil {
-		t.Fatalf("failed to create blob file in %s: %v", path, err)
+		t.Fatalf("failed to create data file in %s: %v", path, err)
 	}
 
 	testCases := []struct {
@@ -100,27 +100,27 @@ func TestBlobFile_WriteAndRead(t *testing.T) {
 		t.Run(tC.name, func(t *testing.T) {
 			t.Parallel()
 
-			writeBlob := bitcask.NewBlob(time.Time{}, time.Time{}, tC.key, tC.value)
+			writeDentry := bitcask.NewDataEntry(time.Time{}, time.Time{}, tC.key, tC.value)
 
-			cursor, err := file.Write(writeBlob)
+			cursor, err := file.Write(writeDentry)
 			if err != nil {
-				t.Fatalf("failed to write blob(%+v): %v", writeBlob, err)
+				t.Fatalf("failed to write data entry(%+v): %v", writeDentry, err)
 			}
 
-			readBlob, err := file.Read(cursor)
+			readDentry, err := file.Read(cursor)
 			if err != nil {
-				t.Fatalf("failed to read blob by cursor(%+v): %v", cursor, err)
+				t.Fatalf("failed to read data entry by cursor(%+v): %v", cursor, err)
 			}
 
-			if !readBlob.Verify() {
-				t.Errorf("failed to verify blob(%+v)", readBlob)
+			if !readDentry.Verify() {
+				t.Errorf("failed to verify data entry(%+v)", readDentry)
 			}
 
-			if !bytes.Equal(readBlob.Key, writeBlob.Key) {
-				t.Errorf("failed to compare keys: %s and %s", readBlob.Key, writeBlob.Key)
+			if !bytes.Equal(readDentry.Key, writeDentry.Key) {
+				t.Errorf("failed to compare keys: %s and %s", readDentry.Key, writeDentry.Key)
 			}
-			if !bytes.Equal(readBlob.Value, writeBlob.Value) {
-				t.Errorf("failed to compare values: %s and %s", readBlob.Value, writeBlob.Value)
+			if !bytes.Equal(readDentry.Value, writeDentry.Value) {
+				t.Errorf("failed to compare values: %s and %s", readDentry.Value, writeDentry.Value)
 			}
 		})
 	}

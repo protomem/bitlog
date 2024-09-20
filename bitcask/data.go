@@ -30,48 +30,48 @@ var (
 	ErrInvalidValue = errors.New("invalid value")
 )
 
-type SSTable struct {
+type FileRegistry struct {
 	mux   sync.RWMutex
-	table map[int64]*BlobFile
+	table map[int64]*DataFile
 }
 
-func NewSSTable(path string) (*SSTable, error) {
+func NewFileRegistry(path string) (*FileRegistry, error) {
 	if err := os.MkdirAll(path, _dirPerm); err != nil {
 		return nil, err
 	}
 
-	activeFile, err := CreateBlobFile(path)
+	activeFile, err := CreateDataFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	table := &SSTable{table: make(map[int64]*BlobFile, 1)}
-	table.SetActive(activeFile)
+	registry := &FileRegistry{table: make(map[int64]*DataFile, 1)}
+	registry.SetActive(activeFile)
 
-	return table, nil
+	return registry, nil
 }
 
-func (t *SSTable) GetActive() *BlobFile {
-	return t.Get(_activeFile)
+func (r *FileRegistry) GetActive() *DataFile {
+	return r.Get(_activeFile)
 }
 
-func (t *SSTable) SetActive(file *BlobFile) {
+func (r *FileRegistry) SetActive(file *DataFile) {
 	if file == nil {
 		return
 	}
 
-	t.mux.Lock()
-	defer t.mux.Unlock()
+	r.mux.Lock()
+	defer r.mux.Unlock()
 
-	t.table[_activeFile] = file
-	t.table[file.ID()] = file
+	r.table[_activeFile] = file
+	r.table[file.ID()] = file
 }
 
-func (t *SSTable) Get(id int64) *BlobFile {
-	t.mux.RLock()
-	defer t.mux.RUnlock()
+func (r *FileRegistry) Get(id int64) *DataFile {
+	r.mux.RLock()
+	defer r.mux.RUnlock()
 
-	file, ok := t.table[id]
+	file, ok := r.table[id]
 	if !ok {
 		return nil
 	}
@@ -79,35 +79,35 @@ func (t *SSTable) Get(id int64) *BlobFile {
 	return file
 }
 
-func (t *SSTable) Set(file *BlobFile) {
+func (r *FileRegistry) Set(file *DataFile) {
 	if file == nil {
 		return
 	}
 
-	t.mux.Lock()
-	defer t.mux.Unlock()
+	r.mux.Lock()
+	defer r.mux.Unlock()
 
-	t.table[file.ID()] = file
+	r.table[file.ID()] = file
 }
 
-func (t *SSTable) Remove(id int64) {
-	t.mux.Lock()
-	defer t.mux.Unlock()
+func (r *FileRegistry) Remove(id int64) {
+	r.mux.Lock()
+	defer r.mux.Unlock()
 
-	delete(t.table, id)
+	delete(r.table, id)
 }
 
-func (t *SSTable) LoadAllFiles() error {
+func (*FileRegistry) LoadAllFiles() error {
 	// TODO: Implement
 	return nil
 }
 
-func (t *SSTable) Close() error {
-	t.mux.Lock()
-	defer t.mux.Unlock()
+func (r *FileRegistry) Close() error {
+	r.mux.Lock()
+	defer r.mux.Unlock()
 
-	files := make([]*BlobFile, 0, len(t.table))
-	for id, file := range t.table {
+	files := make([]*DataFile, 0, len(r.table))
+	for id, file := range r.table {
 		if id == _activeFile {
 			continue
 		}
@@ -115,7 +115,7 @@ func (t *SSTable) Close() error {
 		files = append(files, file)
 	}
 
-	t.table = make(map[int64]*BlobFile)
+	r.table = make(map[int64]*DataFile)
 
 	var errs error
 	for _, file := range files {
@@ -125,12 +125,12 @@ func (t *SSTable) Close() error {
 	return errs
 }
 
-type Cursor struct {
+type FileReference struct {
 	Bytes  int
 	Offset int64
 }
 
-type BlobFile struct {
+type DataFile struct {
 	id   int64
 	name string
 
@@ -138,7 +138,7 @@ type BlobFile struct {
 	writer *fileWriter
 }
 
-func CreateBlobFile(path string) (*BlobFile, error) {
+func CreateDataFile(path string) (*DataFile, error) {
 	id := genFileID()
 
 	name := strconv.FormatInt(id, 10) + _fileBlobExt
@@ -154,7 +154,7 @@ func CreateBlobFile(path string) (*BlobFile, error) {
 		return nil, err
 	}
 
-	return &BlobFile{
+	return &DataFile{
 		id:     id,
 		name:   path,
 		reader: reader,
@@ -168,7 +168,7 @@ func genFileID() int64 {
 	return rand.Int64N(max-min) + min
 }
 
-func OpenBlobFile(path string) (*BlobFile, error) {
+func OpenDataFile(path string) (*DataFile, error) {
 	_, name := filepath.Split(path)
 	if !strings.HasSuffix(name, _fileBlobExt) {
 		return nil, ErrWrongFile
@@ -190,7 +190,7 @@ func OpenBlobFile(path string) (*BlobFile, error) {
 		return nil, err
 	}
 
-	return &BlobFile{
+	return &DataFile{
 		id:     id,
 		name:   path,
 		reader: reader,
@@ -198,118 +198,118 @@ func OpenBlobFile(path string) (*BlobFile, error) {
 	}, nil
 }
 
-func (file *BlobFile) ID() int64 {
+func (file *DataFile) ID() int64 {
 	return file.id
 }
 
-func (file *BlobFile) Name() string {
+func (file *DataFile) Name() string {
 	return file.name
 }
 
-func (file *BlobFile) Read(cursor Cursor) (*Blob, error) {
-	data, err := file.reader.read(cursor.Bytes, cursor.Offset)
+func (file *DataFile) Read(ref FileReference) (*DataEntry, error) {
+	data, err := file.reader.read(ref.Bytes, ref.Offset)
 	if err != nil {
 		return nil, err
 	}
 
-	blob := new(Blob)
-	if err := blob.Deserialize(data); err != nil {
+	dentry := new(DataEntry)
+	if err := dentry.Deserialize(data); err != nil {
 		return nil, err
 	}
 
-	return blob, nil
+	return dentry, nil
 }
 
-func (file *BlobFile) Write(blob *Blob) (Cursor, error) {
-	if blob == nil {
-		return Cursor{}, nil
+func (file *DataFile) Write(dentry *DataEntry) (FileReference, error) {
+	if dentry == nil {
+		return FileReference{}, nil
 	}
 
-	data := blob.Serialize()
+	data := dentry.Serialize()
 
 	var (
-		cursor Cursor
-		err    error
+		ref FileReference
+		err error
 	)
 
-	cursor.Bytes, cursor.Offset, err = file.writer.write(data)
+	ref.Bytes, ref.Offset, err = file.writer.write(data)
 	if err != nil {
-		return Cursor{}, err
+		return FileReference{}, err
 	}
 
-	return cursor, nil
+	return ref, nil
 }
 
-func (file *BlobFile) Close() error {
+func (file *DataFile) Close() error {
 	var errs error
 	errs = errors.Join(errs, file.writer.close())
 	errs = errors.Join(errs, file.reader.close())
 	return errs
 }
 
-type Blob struct {
-	CRC     uint64
-	Created time.Time
-	Expired time.Time
-	Key     []byte
-	Value   []byte
+type DataEntry struct {
+	Checksum uint64
+	Created  time.Time
+	Expired  time.Time
+	Key      []byte
+	Value    []byte
 }
 
-func NewBlob(created, expired time.Time, key, value []byte) *Blob {
-	blob := &Blob{
-		CRC:     0,
-		Created: created,
-		Expired: expired,
-		Key:     key,
-		Value:   value,
+func NewDataEntry(created, expired time.Time, key, value []byte) *DataEntry {
+	dentry := &DataEntry{
+		Checksum: 0,
+		Created:  created,
+		Expired:  expired,
+		Key:      key,
+		Value:    value,
 	}
-	blob.CRC = blob.Sign()
-	return blob
+	dentry.Checksum = dentry.Sign()
+	return dentry
 }
 
-func NewBlobGrave(created time.Time, key []byte) *Blob {
-	return NewBlob(created, time.Time{}, key, []byte{})
+func NewTombstone(created time.Time, key []byte) *DataEntry {
+	return NewDataEntry(created, time.Time{}, key, []byte{})
 }
 
-func (b *Blob) Sign() uint64 {
-	data := b.Serialize()[8:] // truncate CRC bytes
+func (entry *DataEntry) Sign() uint64 {
+	data := entry.Serialize()[8:] // truncate CRC bytes
 	return crc64.Checksum(data, crc64.MakeTable(crc64.ECMA))
 }
 
-func (b *Blob) Verify() bool {
-	check := b.Sign()
-	return check == b.CRC
+func (entry *DataEntry) Verify() bool {
+	checksum := entry.Sign()
+	return checksum == entry.Checksum
 }
 
-func (b *Blob) Serialize() []byte {
-	data := make([]byte, 32+len(b.Key)+len(b.Value))
+func (entry *DataEntry) Serialize() []byte {
+	data := make([]byte, 32+len(entry.Key)+len(entry.Value))
 
-	binary.LittleEndian.PutUint64(data[:8], b.CRC)
+	binary.LittleEndian.PutUint64(data[:8], entry.Checksum)
 
-	binary.LittleEndian.PutUint64(data[8:16], uint64(b.Created.Unix()))
-	binary.LittleEndian.PutUint64(data[16:24], uint64(b.Expired.Unix()))
+	binary.LittleEndian.PutUint64(data[8:16], uint64(entry.Created.Unix()))
+	binary.LittleEndian.PutUint64(data[16:24], uint64(entry.Expired.Unix()))
 
-	binary.LittleEndian.PutUint32(data[24:28], uint32(len(b.Key)))
-	binary.LittleEndian.PutUint32(data[28:32], uint32(len(b.Value)))
+	binary.LittleEndian.PutUint32(data[24:28], uint32(len(entry.Key)))
+	binary.LittleEndian.PutUint32(data[28:32], uint32(len(entry.Value)))
 
-	copy(data[32:32+len(b.Key)], b.Key)
-	copy(data[32+len(b.Key):], b.Value)
+	copy(data[32:32+len(entry.Key)], entry.Key)
+	copy(data[32+len(entry.Key):], entry.Value)
 
 	return data
 }
 
-func (b *Blob) Deserialize(data []byte) error {
+func (entry *DataEntry) Deserialize(data []byte) error {
 	if len(data) < 32 {
 		return ErrWrongBytes
 	}
 
-	b.CRC = binary.LittleEndian.Uint64(data[:8])
+	entry.Checksum = binary.LittleEndian.Uint64(data[:8])
 
 	created := int64(binary.LittleEndian.Uint64(data[8:16]))
 	expired := int64(binary.LittleEndian.Uint64(data[16:24]))
 
-	b.Created = time.Unix(created, 0)
-	b.Expired = time.Unix(expired, 0)
+	entry.Created = time.Unix(created, 0)
+	entry.Expired = time.Unix(expired, 0)
 
 	key := int(binary.LittleEndian.Uint32(data[24:28]))
 	value := int(binary.LittleEndian.Uint32(data[28:32]))
@@ -318,21 +318,21 @@ func (b *Blob) Deserialize(data []byte) error {
 		return ErrWrongBytes
 	}
 
-	b.Key = make([]byte, key)
-	b.Value = make([]byte, value)
+	entry.Key = make([]byte, key)
+	entry.Value = make([]byte, value)
 
-	copy(b.Key, data[32:32+key])
-	copy(b.Value, data[32+key:])
+	copy(entry.Key, data[32:32+key])
+	copy(entry.Value, data[32+key:])
 
 	return nil
 }
 
-func (b *Blob) IsGrave() bool {
-	return len(b.Value) == 0
+func (entry *DataEntry) IsTombstone() bool {
+	return len(entry.Value) == 0
 }
 
-func (b *Blob) IsExpired() bool {
-	return b.Expired != time.Time{} && b.Expired.After(b.Created)
+func (entry *DataEntry) IsExpired() bool {
+	return entry.Expired != time.Time{} && entry.Expired.After(entry.Created)
 }
 
 type fileReader struct {

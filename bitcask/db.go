@@ -11,25 +11,25 @@ var (
 )
 
 type DB struct {
-	memtable *MemTable
-	sstable  *SSTable
+	keydir   *IndexState
+	registry *FileRegistry
 }
 
 func Open(path string) (*DB, error) {
-	memtable := NewMemTable()
+	keydir := NewIndexState()
 
-	sstable, err := NewSSTable(path)
+	registry, err := NewFileRegistry(path)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := sstable.LoadAllFiles(); err != nil {
+	if err := registry.LoadAllFiles(); err != nil {
 		return nil, err
 	}
 
 	db := &DB{
-		memtable: memtable,
-		sstable:  sstable,
+		keydir:   keydir,
+		registry: registry,
 	}
 
 	if err := db.indexing(); err != nil {
@@ -40,35 +40,35 @@ func Open(path string) (*DB, error) {
 }
 
 func (db *DB) Keys() ([][]byte, error) {
-	return db.memtable.Keys(), nil
+	return db.keydir.Keys(), nil
 }
 
 func (db *DB) Get(key []byte) ([]byte, error) {
-	idx, ok := db.memtable.Find(key)
+	idx, ok := db.keydir.Find(key)
 	if !ok {
 		return nil, ErrKeyNotFound
 	}
 
-	file := db.sstable.Get(idx.File)
+	file := db.registry.Get(idx.File)
 	if file == nil {
 		return nil, ErrFileNotFound
 	}
 
-	blob, err := file.Read(idx.Cursor)
+	dentry, err := file.Read(idx.Reference)
 	if err != nil {
 		return nil, err
 	}
 
-	if !blob.Verify() {
+	if !dentry.Verify() {
 		return nil, ErrInvalidValue
 	}
 
-	if blob.IsGrave() || blob.IsExpired() {
-		db.memtable.Remove(key)
+	if dentry.IsTombstone() || dentry.IsExpired() {
+		db.keydir.Remove(key)
 		return nil, ErrKeyNotFound
 	}
 
-	return blob.Value, nil
+	return dentry.Value, nil
 }
 
 func (db *DB) Set(key, value []byte, expiration time.Duration) error {
@@ -85,16 +85,16 @@ func (db *DB) Set(key, value []byte, expiration time.Duration) error {
 		exp = now.Add(expiration)
 	}
 
-	blob := NewBlob(now, exp, key, value)
-	file := db.sstable.GetActive()
+	dentry := NewDataEntry(now, exp, key, value)
+	file := db.registry.GetActive()
 
-	cursor, err := file.Write(blob)
+	cursor, err := file.Write(dentry)
 	if err != nil {
 		return err
 	}
 
-	idx := NewIndex(file.ID(), now, key, cursor)
-	db.memtable.Insert(idx)
+	idx := NewIndexEntry(file.ID(), now, key, cursor)
+	db.keydir.Insert(idx)
 
 	return nil
 }
@@ -102,21 +102,21 @@ func (db *DB) Set(key, value []byte, expiration time.Duration) error {
 func (db *DB) Delete(key []byte) error {
 	now := time.Now()
 
-	blob := NewBlobGrave(now, key)
-	file := db.sstable.GetActive()
+	dentry := NewTombstone(now, key)
+	file := db.registry.GetActive()
 
-	if _, err := file.Write(blob); err != nil {
+	if _, err := file.Write(dentry); err != nil {
 		return err
 	}
 
-	db.memtable.Remove(key)
+	db.keydir.Remove(key)
 
 	return nil
 }
 
 func (db *DB) Close() error {
-	db.memtable.Clear()
-	return db.sstable.Close()
+	db.keydir.Clear()
+	return db.registry.Close()
 }
 
 func (db *DB) indexing() error {
