@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/protomem/bitlog/pkg/werrors"
 )
 
 const (
@@ -18,9 +20,6 @@ const (
 	_rangeFileID int64 = 1_000_000_000
 
 	_dirPerm = 0o777
-
-	_filePerm    = 0o644
-	_fileBlobExt = ".data"
 )
 
 var (
@@ -134,24 +133,27 @@ type DataFile struct {
 	id   int64
 	name string
 
-	reader *fileReader
-	writer *fileWriter
+	reader FileReader
+	writer FileWriter
+
+	wal *WAL
 }
 
 func CreateDataFile(path string) (*DataFile, error) {
+	werr := werrors.Wrap("dataFile/create")
 	id := genFileID()
 
-	name := strconv.FormatInt(id, 10) + _fileBlobExt
+	name := strconv.FormatInt(id, 10) + _dataFileExt
 	path = filepath.Join(path, name)
 
-	writer, err := newFileWriter(path)
+	writer, err := CreateOSFile(path)
 	if err != nil {
-		return nil, err
+		return nil, werr(err)
 	}
 
-	reader, err := newFileReader(path)
+	reader, err := OpenOSFile(path)
 	if err != nil {
-		return nil, err
+		return nil, werr(err)
 	}
 
 	return &DataFile{
@@ -159,6 +161,7 @@ func CreateDataFile(path string) (*DataFile, error) {
 		name:   path,
 		reader: reader,
 		writer: writer,
+		wal:    NewWAL(writer),
 	}, nil
 }
 
@@ -169,23 +172,22 @@ func genFileID() int64 {
 }
 
 func OpenDataFile(path string) (*DataFile, error) {
+	werr := werrors.Wrap("dataFile/open")
+
 	_, name := filepath.Split(path)
-	if !strings.HasSuffix(name, _fileBlobExt) {
-		return nil, ErrWrongFile
+	if !strings.HasSuffix(name, _dataFileExt) {
+		return nil, werr(ErrWrongFile)
 	}
 
-	idStr := strings.TrimSuffix(name, _fileBlobExt)
+	idStr := strings.TrimSuffix(name, _dataFileExt)
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		return nil, ErrWrongFile
+		return nil, werr(ErrWrongFile)
 	}
 
-	writer, err := newFileWriter(path)
-	if err != nil {
-		return nil, err
-	}
+	writer := NewNopFileWriter()
 
-	reader, err := newFileReader(path)
+	reader, err := OpenOSFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -195,6 +197,7 @@ func OpenDataFile(path string) (*DataFile, error) {
 		name:   path,
 		reader: reader,
 		writer: writer,
+		wal:    NewWAL(writer),
 	}, nil
 }
 
@@ -207,20 +210,25 @@ func (file *DataFile) Name() string {
 }
 
 func (file *DataFile) Read(ref FileReference) (*DataEntry, error) {
-	data, err := file.reader.read(ref.Bytes, ref.Offset)
+	werr := werrors.Wrap("dataFile/read")
+	data := make([]byte, ref.Bytes)
+
+	_, err := file.reader.ReadAt(data, ref.Offset)
 	if err != nil {
-		return nil, err
+		return nil, werr(err)
 	}
 
 	dentry := new(DataEntry)
 	if err := dentry.Deserialize(data); err != nil {
-		return nil, err
+		return nil, werr(err)
 	}
 
 	return dentry, nil
 }
 
 func (file *DataFile) Write(dentry *DataEntry) (FileReference, error) {
+	werr := werrors.Wrap("dataFile/write")
+
 	if dentry == nil {
 		return FileReference{}, nil
 	}
@@ -232,9 +240,9 @@ func (file *DataFile) Write(dentry *DataEntry) (FileReference, error) {
 		err error
 	)
 
-	ref.Bytes, ref.Offset, err = file.writer.write(data)
+	ref.Bytes, ref.Offset, err = file.wal.Write(data)
 	if err != nil {
-		return FileReference{}, err
+		return FileReference{}, werr(err)
 	}
 
 	return ref, nil
@@ -242,8 +250,8 @@ func (file *DataFile) Write(dentry *DataEntry) (FileReference, error) {
 
 func (file *DataFile) Close() error {
 	var errs error
-	errs = errors.Join(errs, file.writer.close())
-	errs = errors.Join(errs, file.reader.close())
+	errs = errors.Join(errs, file.writer.Close())
+	errs = errors.Join(errs, file.reader.Close())
 	return errs
 }
 
@@ -333,98 +341,4 @@ func (entry *DataEntry) IsTombstone() bool {
 
 func (entry *DataEntry) IsExpired() bool {
 	return entry.Expired != time.Time{} && entry.Expired.After(entry.Created)
-}
-
-type fileReader struct {
-	f *os.File
-}
-
-func newFileReader(path string) (*fileReader, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY, _filePerm)
-	if err != nil {
-		return nil, err
-	}
-
-	return &fileReader{f: f}, nil
-}
-
-func (file *fileReader) modTime() (time.Time, error) {
-	info, err := file.f.Stat()
-	if err != nil {
-		return time.Time{}, err
-	}
-
-	return info.ModTime(), nil
-}
-
-func (file *fileReader) read(bytes int, offset int64) ([]byte, error) {
-	b := make([]byte, bytes)
-
-	read, err := file.f.ReadAt(b, offset)
-	if err != nil {
-		return nil, err
-	}
-	if bytes != read {
-		return nil, ErrWrongBytes
-	}
-
-	return b, nil
-}
-
-func (file *fileReader) close() error {
-	return file.f.Close()
-}
-
-type fileWriter struct {
-	mux  sync.RWMutex
-	f    *os.File
-	head int64
-}
-
-func newFileWriter(path string) (*fileWriter, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, _filePerm)
-	if err != nil {
-		return nil, err
-	}
-
-	return &fileWriter{
-		f:    f,
-		head: 0,
-	}, nil
-}
-
-func (file *fileWriter) modTime() (time.Time, error) {
-	file.mux.RLock()
-	defer file.mux.RUnlock()
-
-	info, err := file.f.Stat()
-	if err != nil {
-		return time.Time{}, err
-	}
-
-	return info.ModTime(), nil
-}
-
-func (file *fileWriter) write(b []byte) (written int, offset int64, err error) {
-	file.mux.Lock()
-	defer file.mux.Unlock()
-
-	offset = file.head
-
-	written, err = file.f.WriteAt(b, offset)
-	if err != nil {
-		return
-	}
-	if len(b) != written {
-		err = ErrWrongBytes
-		return
-	}
-
-	file.head += int64(written)
-
-	return
-}
-
-func (file *fileWriter) close() error {
-	return file.f.Close()
 }
