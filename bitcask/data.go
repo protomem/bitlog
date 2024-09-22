@@ -1,9 +1,11 @@
 package bitcask
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"hash/crc64"
+	"io"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
@@ -306,33 +308,64 @@ func (entry *DataEntry) Serialize() []byte {
 	return data
 }
 
+func (entry *DataEntry) SerializeTo(w io.Writer) (int, error) {
+	data := entry.Serialize()
+	written, err := w.Write(data)
+	return written, werrors.Error(err, "dataEntry/serialize")
+}
+
 func (entry *DataEntry) Deserialize(data []byte) error {
-	if len(data) < 32 {
-		return ErrWrongBytes
+	reader := bytes.NewReader(data)
+	_, err := entry.DeserializeFrom(reader)
+	return err
+}
+
+func (entry *DataEntry) DeserializeFrom(r io.Reader) (int, error) {
+	var (
+		werr      = werrors.Wrap("dataEntry/deserialize")
+		totalRead = 0
+
+		err  error
+		read int
+	)
+
+	head := make([]byte, 32)
+	read, err = r.Read(head)
+	totalRead += read
+
+	if err != nil {
+		return totalRead, werr(err)
+	}
+	if read != 32 {
+		return totalRead, io.ErrUnexpectedEOF
 	}
 
-	entry.Checksum = binary.LittleEndian.Uint64(data[:8])
+	entry.Checksum = binary.LittleEndian.Uint64(head[:8])
 
-	created := int64(binary.LittleEndian.Uint64(data[8:16]))
-	expired := int64(binary.LittleEndian.Uint64(data[16:24]))
+	created := int64(binary.LittleEndian.Uint64(head[8:16]))
+	expired := int64(binary.LittleEndian.Uint64(head[16:24]))
 
 	entry.Created = time.Unix(created, 0)
 	entry.Expired = time.Unix(expired, 0)
 
-	key := int(binary.LittleEndian.Uint32(data[24:28]))
-	value := int(binary.LittleEndian.Uint32(data[28:32]))
+	keyLen := int(binary.LittleEndian.Uint32(head[24:28]))
+	valueLen := int(binary.LittleEndian.Uint32(head[28:32]))
 
-	if len(data) != 32+key+value {
-		return ErrWrongBytes
+	body := make([]byte, keyLen+valueLen)
+	read, err = r.Read(body)
+	totalRead += read
+
+	if err != nil {
+		return totalRead, werr(err)
+	}
+	if read != keyLen+valueLen {
+		return totalRead, io.ErrUnexpectedEOF
 	}
 
-	entry.Key = make([]byte, key)
-	entry.Value = make([]byte, value)
+	entry.Key = body[:keyLen]
+	entry.Value = body[keyLen:]
 
-	copy(entry.Key, data[32:32+key])
-	copy(entry.Value, data[32+key:])
-
-	return nil
+	return totalRead, nil
 }
 
 func (entry *DataEntry) IsTombstone() bool {
