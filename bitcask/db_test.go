@@ -3,63 +3,44 @@ package bitcask_test
 import (
 	"bytes"
 	"errors"
-	"strconv"
 	"testing"
 
 	"github.com/protomem/bitlog/bitcask"
 )
 
-func TestDB(t *testing.T) {
-	dir := t.TempDir()
+func FuzzDB(f *testing.F) {
+	dir := f.TempDir()
 
 	db, err := bitcask.Open(dir)
 	if err != nil {
-		t.Fatalf("failed to open db(%s): %v", dir, err)
+		f.Fatalf("failed to open db(%s): %v", dir, err)
 	}
 
-	testCases := []struct {
-		name  string
-		key   []byte
-		value []byte
-	}{}
+	f.Fuzz(func(t *testing.T, key []byte, value []byte) {
+		t.Parallel()
 
-	for i := 1; i <= 100; i++ {
-		iStr := strconv.Itoa(i)
-		testCases = append(testCases, struct {
-			name  string
-			key   []byte
-			value []byte
-		}{
-			name:  "Case " + iStr,
-			key:   []byte("key_" + iStr),
-			value: []byte("value_" + iStr),
-		})
-	}
+		if len(key) == 0 || len(value) == 0 {
+			t.Skip()
+		}
 
-	for _, tC := range testCases {
-		tC := tC
-		t.Run(tC.name, func(t *testing.T) {
-			t.Parallel()
+		if err := db.Set(key, value, 0); err != nil {
+			t.Fatalf("failed to set key(%s) with value(%s): %v", key, value, err)
+		}
 
-			if err := db.Set(tC.key, tC.value, 0); err != nil {
-				t.Errorf("failed to set key(%s) with value(%s): %v", tC.key, tC.value, err)
-			}
+		if readValue, err := db.Get(key); err != nil {
+			t.Fatalf("failed to get key(%s): %v", key, err)
+		} else if !bytes.Equal(readValue, value) {
+			t.Fatalf("failed to get key(%s): expected value='%s', actual value='%s'", key, value, readValue)
+		}
 
-			if value, err := db.Get(tC.key); err != nil {
-				t.Errorf("failed to get key(%s): %v", tC.key, err)
-			} else if !bytes.Equal(value, tC.value) {
-				t.Errorf("failed to get key(%s): wron value", tC.key)
-			}
+		if err := db.Delete(key); err != nil {
+			t.Fatalf("failed to delete key(%s): %v", key, err)
+		}
 
-			if err := db.Delete(tC.key); err != nil {
-				t.Errorf("failed to delete key(%s): %v", tC.key, err)
-			}
-
-			if _, err := db.Get(tC.key); err == nil {
-				t.Errorf("failed to get deleted key(%s)", tC.key)
-			} else if !errors.Is(err, bitcask.ErrKeyNotFound) {
-				t.Errorf("fialed to get deleted key(%s): unexpected error: %v", tC.key, err)
-			}
-		})
-	}
+		if _, err := db.Get(key); err == nil {
+			t.Fatalf("failed to get deleted key(%s)", key)
+		} else if !errors.Is(err, bitcask.ErrKeyNotFound) {
+			t.Fatalf("fialed to get deleted key(%s): unexpected error: %v", key, err)
+		}
+	})
 }

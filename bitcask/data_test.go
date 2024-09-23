@@ -1,8 +1,6 @@
 package bitcask_test
 
 import (
-	"bytes"
-	"strconv"
 	"testing"
 	"time"
 
@@ -57,71 +55,39 @@ func TestDataFile_CreateAndOpen(t *testing.T) {
 	}
 }
 
-func TestDataFile_WriteAndRead(t *testing.T) {
-	path := t.TempDir()
+func FuzzDataFile_WriteAndRead(f *testing.F) {
+	path := f.TempDir()
 
 	file, err := bitcask.CreateDataFile(path)
 	if err != nil {
-		t.Fatalf("failed to create data file in %s: %v", path, err)
+		f.Fatalf("failed to create data file in %s: %v", path, err)
 	}
 
-	testCases := []struct {
-		name  string
-		key   []byte
-		value []byte
-	}{
-		{
-			name:  "Without value",
-			key:   []byte("key"),
-			value: []byte{},
-		},
-		{
-			name:  "Without key",
-			key:   []byte{},
-			value: []byte("value"),
-		},
-	}
+	f.Add([]byte("key"), []byte("value"))
+	f.Add([]byte("key"), []byte{})
+	f.Add([]byte{}, []byte("value"))
 
-	for i := 1; i <= 10; i++ {
-		iStr := strconv.Itoa(i)
-		testCases = append(testCases, struct {
-			name  string
-			key   []byte
-			value []byte
-		}{
-			name:  "Case " + iStr,
-			key:   []byte("key_" + iStr),
-			value: []byte("value_" + iStr),
-		})
-	}
+	f.Fuzz(func(t *testing.T, key []byte, value []byte) {
+		t.Parallel()
 
-	for _, tC := range testCases {
-		tC := tC
-		t.Run(tC.name, func(t *testing.T) {
-			t.Parallel()
+		writeDentry := bitcask.NewDataEntry(time.Now().UnixMilli(), 0, key, value)
 
-			writeDentry := bitcask.NewDataEntry(0, 0, tC.key, tC.value)
+		cur, err := file.Write(writeDentry)
+		if err != nil {
+			t.Fatalf("failed write data entry(%+v): %v", writeDentry, err)
+		}
 
-			cursor, err := file.Write(writeDentry)
-			if err != nil {
-				t.Fatalf("failed to write data entry(%+v): %v", writeDentry, err)
-			}
+		readEntry, err := file.Read(cur)
+		if err != nil {
+			t.Fatalf("failed read data entry by cursor(%+v): %v", cur, readEntry)
+		}
 
-			readDentry, err := file.Read(cursor)
-			if err != nil {
-				t.Fatalf("failed to read data entry by cursor(%+v): %v", cursor, err)
-			}
+		if !readEntry.IsVerify() {
+			t.Errorf("failed verify data entry(%+v)", readEntry)
+		}
 
-			if !readDentry.IsVerify() {
-				t.Errorf("failed to verify data entry(%+v)", readDentry)
-			}
-
-			if !bytes.Equal(readDentry.Key, writeDentry.Key) {
-				t.Errorf("failed to compare keys: %s and %s", readDentry.Key, writeDentry.Key)
-			}
-			if !bytes.Equal(readDentry.Value, writeDentry.Value) {
-				t.Errorf("failed to compare values: %s and %s", readDentry.Value, writeDentry.Value)
-			}
-		})
-	}
+		if !writeDentry.Equal(readEntry) {
+			t.Errorf("failed compare data entry for write(%+v) and read(%+v)", writeDentry, readEntry)
+		}
+	})
 }

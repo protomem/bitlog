@@ -232,8 +232,8 @@ func (file *DataFile) Write(dentry *DataEntry) (Cursor, error) {
 	data := dentry.Serialize()
 
 	var (
-		cur Cursor
 		err error
+		cur Cursor
 	)
 
 	cur.Bytes, cur.Offset, err = file.wal.Write(data)
@@ -283,6 +283,19 @@ func (entry *DataEntry) Sign() uint64 {
 func (entry *DataEntry) IsVerify() bool {
 	checksum := entry.Sign()
 	return checksum == entry.Checksum
+}
+
+func (entry *DataEntry) Equal(otherEntry *DataEntry) bool {
+	if otherEntry == nil {
+		return false
+	}
+
+	if entry.Created != otherEntry.Created || entry.Expired != otherEntry.Expired ||
+		!bytes.Equal(entry.Key, otherEntry.Key) || !bytes.Equal(entry.Value, otherEntry.Value) {
+		return false
+	}
+
+	return true
 }
 
 func (entry *DataEntry) Serialize() []byte {
