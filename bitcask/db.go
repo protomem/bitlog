@@ -54,7 +54,7 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 		return nil, ErrFileNotFound
 	}
 
-	dentry, err := file.Read(idx.Reference)
+	dentry, err := file.Read(idx.Cursor)
 	if err != nil {
 		return nil, err
 	}

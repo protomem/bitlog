@@ -71,26 +71,26 @@ func (state *IndexState) Clear() {
 }
 
 type IndexEntry struct {
-	File      int64
-	Created   time.Time
-	Key       []byte
-	Reference FileReference
+	File    int64
+	Created time.Time
+	Key     []byte
+	Cursor  Cursor
 }
 
-func NewIndexEntry(file int64, created time.Time, key []byte, ref FileReference) IndexEntry {
+func NewIndexEntry(file int64, created time.Time, key []byte, cur Cursor) IndexEntry {
 	return IndexEntry{
-		File:      file,
-		Created:   created,
-		Key:       key,
-		Reference: ref,
+		File:    file,
+		Created: created,
+		Key:     key,
+		Cursor:  cur,
 	}
 }
 
 func (idx IndexEntry) Clone() IndexEntry {
 	return IndexEntry{
-		File:      idx.File,
-		Created:   idx.Created,
-		Key:       append([]byte{}, idx.Key...),
-		Reference: idx.Reference,
+		File:    idx.File,
+		Created: idx.Created,
+		Key:     append([]byte{}, idx.Key...),
+		Cursor:  idx.Cursor,
 	}
 }

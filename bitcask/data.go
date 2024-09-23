@@ -126,7 +126,7 @@ func (r *FileRegistry) Close() error {
 	return errs
 }
 
-type FileReference struct {
+type Cursor struct {
 	Bytes  int
 	Offset int64
 }
@@ -211,11 +211,11 @@ func (file *DataFile) Name() string {
 	return file.name
 }
 
-func (file *DataFile) Read(ref FileReference) (*DataEntry, error) {
+func (file *DataFile) Read(cur Cursor) (*DataEntry, error) {
 	werr := werrors.Wrap("dataFile/read")
-	data := make([]byte, ref.Bytes)
+	data := make([]byte, cur.Bytes)
 
-	_, err := file.reader.ReadAt(data, ref.Offset)
+	_, err := file.reader.ReadAt(data, cur.Offset)
 	if err != nil {
 		return nil, werr(err)
 	}
@@ -228,26 +228,26 @@ func (file *DataFile) Read(ref FileReference) (*DataEntry, error) {
 	return dentry, nil
 }
 
-func (file *DataFile) Write(dentry *DataEntry) (FileReference, error) {
+func (file *DataFile) Write(dentry *DataEntry) (Cursor, error) {
 	werr := werrors.Wrap("dataFile/write")
 
 	if dentry == nil {
-		return FileReference{}, nil
+		return Cursor{}, nil
 	}
 
 	data := dentry.Serialize()
 
 	var (
-		ref FileReference
+		cur Cursor
 		err error
 	)
 
-	ref.Bytes, ref.Offset, err = file.wal.Write(data)
+	cur.Bytes, cur.Offset, err = file.wal.Write(data)
 	if err != nil {
-		return FileReference{}, werr(err)
+		return Cursor{}, werr(err)
 	}
 
-	return ref, nil
+	return cur, nil
 }
 
 func (file *DataFile) Close() error {
