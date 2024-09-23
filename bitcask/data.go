@@ -23,12 +23,7 @@ const (
 	_dirPerm = 0o777
 )
 
-var (
-	ErrWrongBytes   = errors.New("wrong bytes")
-	ErrWrongFile    = errors.New("wrong file")
-	ErrFileNotFound = errors.New("file not found")
-	ErrInvalidValue = errors.New("invalid value")
-)
+var ErrFileNotFound = errors.New("file not found")
 
 type FileRegistry struct {
 	mux   sync.RWMutex
@@ -177,13 +172,13 @@ func OpenDataFile(path string) (*DataFile, error) {
 
 	_, name := filepath.Split(path)
 	if !strings.HasSuffix(name, _dataFileExt) {
-		return nil, werr(ErrWrongFile)
+		return nil, werr(ErrFileNotFound, "wrong file extension")
 	}
 
 	idStr := strings.TrimSuffix(name, _dataFileExt)
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		return nil, werr(ErrWrongFile)
+		return nil, werr(ErrFileNotFound, "wrong filename")
 	}
 
 	writer := NewNopFileWriter()
@@ -285,7 +280,7 @@ func (entry *DataEntry) Sign() uint64 {
 	return crc64.Checksum(data, crc64.MakeTable(crc64.ECMA))
 }
 
-func (entry *DataEntry) Verify() bool {
+func (entry *DataEntry) IsVerify() bool {
 	checksum := entry.Sign()
 	return checksum == entry.Checksum
 }

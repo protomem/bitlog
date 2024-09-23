@@ -59,8 +59,8 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	if !dentry.Verify() {
-		return nil, ErrInvalidValue
+	if !dentry.IsVerify() {
+		return nil, ErrKeyNotFound
 	}
 
 	if dentry.IsTombstone() || dentry.IsExpired() {

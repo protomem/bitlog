@@ -13,7 +13,7 @@ func TestDataEntry_SignAndVerify(t *testing.T) {
 	dentry := bitcask.NewDataEntry(time.Now().UnixMilli(), time.Now().Add(5*time.Hour).UnixMilli(), []byte("some_key"), []byte("some_value"))
 
 	dentry.Checksum = dentry.Sign()
-	if !dentry.Verify() {
+	if !dentry.IsVerify() {
 		t.Fatalf("failed to verify data entry(%+v)", dentry)
 	}
 }
@@ -112,7 +112,7 @@ func TestDataFile_WriteAndRead(t *testing.T) {
 				t.Fatalf("failed to read data entry by cursor(%+v): %v", cursor, err)
 			}
 
-			if !readDentry.Verify() {
+			if !readDentry.IsVerify() {
 				t.Errorf("failed to verify data entry(%+v)", readDentry)
 			}
 
