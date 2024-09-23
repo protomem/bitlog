@@ -10,7 +10,7 @@ import (
 )
 
 func TestDataEntry_SignAndVerify(t *testing.T) {
-	dentry := bitcask.NewDataEntry(time.Now(), time.Now().Add(5*time.Hour), []byte("some_key"), []byte("some_value"))
+	dentry := bitcask.NewDataEntry(time.Now().UnixMilli(), time.Now().Add(5*time.Hour).UnixMilli(), []byte("some_key"), []byte("some_value"))
 
 	dentry.Checksum = dentry.Sign()
 	if !dentry.Verify() {
@@ -19,7 +19,7 @@ func TestDataEntry_SignAndVerify(t *testing.T) {
 }
 
 func TestDataEntry_Serialization(t *testing.T) {
-	dentry := bitcask.NewDataEntry(time.Now(), time.Now().Add(5*time.Hour), []byte("some_key"), []byte("some_value"))
+	dentry := bitcask.NewDataEntry(time.Now().UnixMilli(), time.Now().Add(5*time.Hour).UnixMilli(), []byte("some_key"), []byte("some_value"))
 	data := dentry.Serialize()
 
 	decodedEntry := new(bitcask.DataEntry)
@@ -100,7 +100,7 @@ func TestDataFile_WriteAndRead(t *testing.T) {
 		t.Run(tC.name, func(t *testing.T) {
 			t.Parallel()
 
-			writeDentry := bitcask.NewDataEntry(time.Time{}, time.Time{}, tC.key, tC.value)
+			writeDentry := bitcask.NewDataEntry(0, 0, tC.key, tC.value)
 
 			cursor, err := file.Write(writeDentry)
 			if err != nil {

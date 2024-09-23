@@ -3,7 +3,6 @@ package bitcask
 import (
 	"hash/maphash"
 	"sync"
-	"time"
 )
 
 type IndexState struct {
@@ -72,12 +71,12 @@ func (state *IndexState) Clear() {
 
 type IndexEntry struct {
 	File    int64
-	Created time.Time
+	Created int64
 	Key     []byte
 	Cursor  Cursor
 }
 
-func NewIndexEntry(file int64, created time.Time, key []byte, cur Cursor) IndexEntry {
+func NewIndexEntry(file int64, created int64, key []byte, cur Cursor) IndexEntry {
 	return IndexEntry{
 		File:    file,
 		Created: created,

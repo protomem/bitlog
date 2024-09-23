@@ -85,7 +85,7 @@ func (db *DB) Set(key, value []byte, expiration time.Duration) error {
 		exp = now.Add(expiration)
 	}
 
-	dentry := NewDataEntry(now, exp, key, value)
+	dentry := NewDataEntry(now.UnixMilli(), exp.UnixMilli(), key, value)
 	file := db.registry.GetActive()
 
 	cursor, err := file.Write(dentry)
@@ -93,7 +93,7 @@ func (db *DB) Set(key, value []byte, expiration time.Duration) error {
 		return err
 	}
 
-	idx := NewIndexEntry(file.ID(), now, key, cursor)
+	idx := NewIndexEntry(file.ID(), now.UnixMilli(), key, cursor)
 	db.keydir.Insert(idx)
 
 	return nil
@@ -102,7 +102,7 @@ func (db *DB) Set(key, value []byte, expiration time.Duration) error {
 func (db *DB) Delete(key []byte) error {
 	now := time.Now()
 
-	dentry := NewTombstone(now, key)
+	dentry := NewTombstone(now.UnixMilli(), key)
 	file := db.registry.GetActive()
 
 	if _, err := file.Write(dentry); err != nil {

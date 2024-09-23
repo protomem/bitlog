@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/protomem/bitlog/pkg/werrors"
 )
@@ -259,13 +258,13 @@ func (file *DataFile) Close() error {
 
 type DataEntry struct {
 	Checksum uint64
-	Created  time.Time
-	Expired  time.Time
+	Created  int64
+	Expired  int64
 	Key      []byte
 	Value    []byte
 }
 
-func NewDataEntry(created, expired time.Time, key, value []byte) *DataEntry {
+func NewDataEntry(created, expired int64, key, value []byte) *DataEntry {
 	dentry := &DataEntry{
 		Checksum: 0,
 		Created:  created,
@@ -277,8 +276,8 @@ func NewDataEntry(created, expired time.Time, key, value []byte) *DataEntry {
 	return dentry
 }
 
-func NewTombstone(created time.Time, key []byte) *DataEntry {
-	return NewDataEntry(created, time.Time{}, key, []byte{})
+func NewTombstone(created int64, key []byte) *DataEntry {
+	return NewDataEntry(created, 0, key, []byte{})
 }
 
 func (entry *DataEntry) Sign() uint64 {
@@ -296,8 +295,8 @@ func (entry *DataEntry) Serialize() []byte {
 
 	binary.LittleEndian.PutUint64(data[:8], entry.Checksum)
 
-	binary.LittleEndian.PutUint64(data[8:16], uint64(entry.Created.Unix()))
-	binary.LittleEndian.PutUint64(data[16:24], uint64(entry.Expired.Unix()))
+	binary.LittleEndian.PutUint64(data[8:16], uint64(entry.Created))
+	binary.LittleEndian.PutUint64(data[16:24], uint64(entry.Expired))
 
 	binary.LittleEndian.PutUint32(data[24:28], uint32(len(entry.Key)))
 	binary.LittleEndian.PutUint32(data[28:32], uint32(len(entry.Value)))
@@ -342,11 +341,8 @@ func (entry *DataEntry) DeserializeFrom(r io.Reader) (int, error) {
 
 	entry.Checksum = binary.LittleEndian.Uint64(head[:8])
 
-	created := int64(binary.LittleEndian.Uint64(head[8:16]))
-	expired := int64(binary.LittleEndian.Uint64(head[16:24]))
-
-	entry.Created = time.Unix(created, 0)
-	entry.Expired = time.Unix(expired, 0)
+	entry.Created = int64(binary.LittleEndian.Uint64(head[8:16]))
+	entry.Expired = int64(binary.LittleEndian.Uint64(head[16:24]))
 
 	keyLen := int(binary.LittleEndian.Uint32(head[24:28]))
 	valueLen := int(binary.LittleEndian.Uint32(head[28:32]))
@@ -373,5 +369,5 @@ func (entry *DataEntry) IsTombstone() bool {
 }
 
 func (entry *DataEntry) IsExpired() bool {
-	return entry.Expired != time.Time{} && entry.Expired.After(entry.Created)
+	return entry.Expired != 0 && entry.Expired > entry.Created
 }
