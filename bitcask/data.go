@@ -6,13 +6,13 @@ import (
 	"errors"
 	"hash/crc64"
 	"io"
-	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/protomem/bitlog/pkg/crand"
 	"github.com/protomem/bitlog/pkg/werrors"
 )
 
@@ -143,7 +143,7 @@ type DataFile struct {
 
 func CreateDataFile(path string) (*DataFile, error) {
 	werr := werrors.Wrap("dataFile/create")
-	id := genFileID()
+	id := crand.Range(_rangeFileID, (_rangeFileID*10)-1)
 
 	name := strconv.FormatInt(id, 10) + _dataFileExt
 	path = filepath.Join(path, name)
@@ -165,12 +165,6 @@ func CreateDataFile(path string) (*DataFile, error) {
 		writer: writer,
 		wal:    NewWAL(writer),
 	}, nil
-}
-
-func genFileID() int64 {
-	min := _rangeFileID
-	max := (_rangeFileID * 10) - 1
-	return rand.Int64N(max-min) + min
 }
 
 func OpenDataFile(path string) (*DataFile, error) {
