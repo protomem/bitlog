@@ -209,27 +209,26 @@ func (file *DataFile) Read(cur Cursor) (*DataEntry, error) {
 	werr := werrors.Wrap("dataFile/read")
 	data := make([]byte, cur.Bytes)
 
-	_, err := file.reader.ReadAt(data, cur.Offset)
-	if err != nil {
+	if _, err := file.reader.ReadAt(data, cur.Offset); err != nil {
 		return nil, werr(err)
 	}
 
-	dentry := new(DataEntry)
-	if err := dentry.Deserialize(data); err != nil {
+	entry := new(DataEntry)
+	if err := entry.Deserialize(data); err != nil {
 		return nil, werr(err)
 	}
 
-	return dentry, nil
+	return entry, nil
 }
 
-func (file *DataFile) Write(dentry *DataEntry) (Cursor, error) {
+func (file *DataFile) Write(entry *DataEntry) (Cursor, error) {
 	werr := werrors.Wrap("dataFile/write")
 
-	if dentry == nil {
+	if entry == nil {
 		return Cursor{}, nil
 	}
 
-	data := dentry.Serialize()
+	data := entry.Serialize()
 
 	var (
 		err error

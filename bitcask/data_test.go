@@ -1,6 +1,7 @@
 package bitcask_test
 
 import (
+	"iter"
 	"testing"
 	"time"
 
@@ -8,17 +9,17 @@ import (
 )
 
 func TestDataEntry_SignAndVerify(t *testing.T) {
-	dentry := bitcask.NewDataEntry(time.Now().UnixMilli(), time.Now().Add(5*time.Hour).UnixMilli(), []byte("some_key"), []byte("some_value"))
+	entry := bitcask.NewDataEntry(time.Now().UnixMilli(), time.Now().Add(5*time.Hour).UnixMilli(), []byte("some_key"), []byte("some_value"))
 
-	dentry.Checksum = dentry.Sign()
-	if !dentry.IsVerify() {
-		t.Fatalf("failed to verify data entry(%+v)", dentry)
+	entry.Checksum = entry.Sign()
+	if !entry.IsVerify() {
+		t.Fatalf("failed to verify data entry(%+v)", entry)
 	}
 }
 
 func TestDataEntry_Serialization(t *testing.T) {
-	dentry := bitcask.NewDataEntry(time.Now().UnixMilli(), time.Now().Add(5*time.Hour).UnixMilli(), []byte("some_key"), []byte("some_value"))
-	data := dentry.Serialize()
+	entry := bitcask.NewDataEntry(time.Now().UnixMilli(), time.Now().Add(5*time.Hour).UnixMilli(), []byte("some_key"), []byte("some_value"))
+	data := entry.Serialize()
 
 	decodedEntry := new(bitcask.DataEntry)
 	if err := decodedEntry.Deserialize(data); err != nil {
@@ -70,11 +71,11 @@ func FuzzDataFile_WriteAndRead(f *testing.F) {
 	f.Fuzz(func(t *testing.T, key []byte, value []byte) {
 		t.Parallel()
 
-		writeDentry := bitcask.NewDataEntry(time.Now().UnixMilli(), 0, key, value)
+		writeEntry := bitcask.NewDataEntry(time.Now().UnixMilli(), 0, key, value)
 
-		cur, err := file.Write(writeDentry)
+		cur, err := file.Write(writeEntry)
 		if err != nil {
-			t.Fatalf("failed write data entry(%+v): %v", writeDentry, err)
+			t.Fatalf("failed write data entry(%+v): %v", writeEntry, err)
 		}
 
 		readEntry, err := file.Read(cur)
@@ -86,8 +87,8 @@ func FuzzDataFile_WriteAndRead(f *testing.F) {
 			t.Errorf("failed verify data entry(%+v)", readEntry)
 		}
 
-		if !writeDentry.Equal(readEntry) {
-			t.Errorf("failed compare data entry for write(%+v) and read(%+v)", writeDentry, readEntry)
+		if !writeEntry.Equal(readEntry) {
+			t.Errorf("failed compare data entry for write(%+v) and read(%+v)", writeEntry, readEntry)
 		}
 	})
 }
