@@ -1,7 +1,8 @@
 package bitcask_test
 
 import (
-	"iter"
+	"bytes"
+	"strconv"
 	"testing"
 	"time"
 
@@ -91,4 +92,45 @@ func FuzzDataFile_WriteAndRead(f *testing.F) {
 			t.Errorf("failed compare data entry for write(%+v) and read(%+v)", writeEntry, readEntry)
 		}
 	})
+}
+
+func TestDataFileIterator(t *testing.T) {
+	path := t.TempDir()
+
+	file, err := bitcask.CreateDataFile(path)
+	if err != nil {
+		t.Fatalf("failed to create data file in %s: %v", path, err)
+	}
+
+	iter, err := bitcask.NewDataFileIterator(file)
+	if err != nil {
+		t.Fatalf("failed to open data file iterator in %s: %v", path, err)
+	}
+
+	testData := [10]struct {
+		Key   []byte
+		Value []byte
+	}{}
+
+	for i := 0; i < len(testData); i++ {
+		testData[i].Key = []byte("key_" + strconv.Itoa(i))
+		testData[i].Value = []byte("value_" + strconv.Itoa(i))
+
+		entry := bitcask.NewDataEntry(time.Now().UnixMilli(), 0, testData[i].Key, testData[i].Value)
+		if _, err := file.Write(entry); err != nil {
+			t.Fatalf("failed to write data entry(%+v): %v", testData[i], err)
+		}
+	}
+
+	for i := 0; iter.Next(); i++ {
+		entry, err := iter.Value()
+		if err != nil {
+			t.Fatalf("failed to get value from iterator: %v", err)
+		}
+
+		if !bytes.Equal(entry.Key, testData[i].Key) ||
+			!bytes.Equal(entry.Value, testData[i].Value) {
+			t.Fatalf("failed to match data entry(%+v) and test data(%+v) in iterator", entry, testData[i])
+		}
+	}
 }

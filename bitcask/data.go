@@ -250,6 +250,64 @@ func (file *DataFile) Close() error {
 	return errs
 }
 
+type DataFileIterator struct {
+	reader FileReader
+
+	mux   sync.RWMutex
+	value *DataEntry
+	err   error
+}
+
+func NewDataFileIterator(file *DataFile) (*DataFileIterator, error) {
+	reader, err := OpenOSFile(file.Name())
+	if err != nil {
+		return nil, werrors.Error(err, "dataFileIter/new")
+	}
+
+	return &DataFileIterator{
+		reader: reader,
+		value:  nil,
+		err:    nil,
+	}, nil
+}
+
+func (iter *DataFileIterator) Next() bool {
+	iter.mux.Lock()
+	defer iter.mux.Unlock()
+
+	if iter.err != nil {
+		return false
+	}
+
+	entry := new(DataEntry)
+	if _, err := entry.DeserializeFrom(iter.reader); err != nil {
+		iter.value = nil
+		iter.err = err
+		return false
+	}
+
+	iter.value = entry
+	iter.err = nil
+
+	return true
+}
+
+func (iter *DataFileIterator) Value() (*DataEntry, error) {
+	iter.mux.RLock()
+	defer iter.mux.RUnlock()
+
+	return iter.value, werrors.Error(iter.err, "dataFileIter")
+}
+
+func (iter *DataFileIterator) Close() error {
+	iter.mux.Lock()
+	defer iter.mux.Unlock()
+
+	iter.err = os.ErrClosed
+
+	return werrors.Error(iter.err, "dataFileIter/close")
+}
+
 type DataEntry struct {
 	Checksum uint64
 	Created  int64
