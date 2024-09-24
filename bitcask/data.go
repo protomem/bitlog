@@ -46,27 +46,27 @@ func NewFileRegistry(path string) (*FileRegistry, error) {
 	return registry, nil
 }
 
-func (r *FileRegistry) GetActive() *DataFile {
-	return r.Get(_activeFile)
+func (reg *FileRegistry) GetActive() *DataFile {
+	return reg.Get(_activeFile)
 }
 
-func (r *FileRegistry) SetActive(file *DataFile) {
+func (reg *FileRegistry) SetActive(file *DataFile) {
 	if file == nil {
 		return
 	}
 
-	r.mux.Lock()
-	defer r.mux.Unlock()
+	reg.mux.Lock()
+	defer reg.mux.Unlock()
 
-	r.table[_activeFile] = file
-	r.table[file.ID()] = file
+	reg.table[_activeFile] = file
+	reg.table[file.ID()] = file
 }
 
-func (r *FileRegistry) Get(id int64) *DataFile {
-	r.mux.RLock()
-	defer r.mux.RUnlock()
+func (reg *FileRegistry) Get(id int64) *DataFile {
+	reg.mux.RLock()
+	defer reg.mux.RUnlock()
 
-	file, ok := r.table[id]
+	file, ok := reg.table[id]
 	if !ok {
 		return nil
 	}
@@ -74,22 +74,22 @@ func (r *FileRegistry) Get(id int64) *DataFile {
 	return file
 }
 
-func (r *FileRegistry) Set(file *DataFile) {
+func (reg *FileRegistry) Set(file *DataFile) {
 	if file == nil {
 		return
 	}
 
-	r.mux.Lock()
-	defer r.mux.Unlock()
+	reg.mux.Lock()
+	defer reg.mux.Unlock()
 
-	r.table[file.ID()] = file
+	reg.table[file.ID()] = file
 }
 
-func (r *FileRegistry) Remove(id int64) {
-	r.mux.Lock()
-	defer r.mux.Unlock()
+func (reg *FileRegistry) Remove(id int64) {
+	reg.mux.Lock()
+	defer reg.mux.Unlock()
 
-	delete(r.table, id)
+	delete(reg.table, id)
 }
 
 func (*FileRegistry) LoadAllFiles() error {
@@ -97,12 +97,23 @@ func (*FileRegistry) LoadAllFiles() error {
 	return nil
 }
 
-func (r *FileRegistry) Close() error {
-	r.mux.Lock()
-	defer r.mux.Unlock()
+func (reg *FileRegistry) Close() error {
+	files := reg.takeAllFiles()
 
-	files := make([]*DataFile, 0, len(r.table))
-	for id, file := range r.table {
+	var errs error
+	for _, file := range files {
+		errs = errors.Join(errs, file.Close())
+	}
+
+	return werrors.Error(errs, "fileReg/close")
+}
+
+func (reg *FileRegistry) takeAllFiles() []*DataFile {
+	reg.mux.Lock()
+	defer reg.mux.Unlock()
+
+	files := make([]*DataFile, 0, len(reg.table))
+	for id, file := range reg.table {
 		if id == _activeFile {
 			continue
 		}
@@ -110,14 +121,9 @@ func (r *FileRegistry) Close() error {
 		files = append(files, file)
 	}
 
-	r.table = make(map[int64]*DataFile)
+	reg.table = make(map[int64]*DataFile)
 
-	var errs error
-	for _, file := range files {
-		errs = errors.Join(errs, file.Close())
-	}
-
-	return errs
+	return files
 }
 
 type Cursor struct {
