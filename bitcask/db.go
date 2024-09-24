@@ -54,21 +54,21 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 		return nil, ErrFileNotFound
 	}
 
-	dentry, err := file.Read(idx.Cursor)
+	entry, err := file.Read(idx.Cursor)
 	if err != nil {
 		return nil, err
 	}
 
-	if !dentry.IsVerify() {
+	if !entry.IsVerify() {
 		return nil, ErrKeyNotFound
 	}
 
-	if dentry.IsTombstone() || dentry.IsExpired() {
+	if entry.IsTombstone() || entry.IsExpired() {
 		db.keydir.Remove(key)
 		return nil, ErrKeyNotFound
 	}
 
-	return dentry.Value, nil
+	return entry.Value, nil
 }
 
 func (db *DB) Set(key, value []byte, expiration time.Duration) error {
@@ -85,10 +85,10 @@ func (db *DB) Set(key, value []byte, expiration time.Duration) error {
 		exp = now.Add(expiration)
 	}
 
-	dentry := NewDataEntry(now.UnixMilli(), exp.UnixMilli(), key, value)
+	entry := NewDataEntry(now.UnixMilli(), exp.UnixMilli(), key, value)
 	file := db.registry.GetActive()
 
-	cursor, err := file.Write(dentry)
+	cursor, err := file.Write(entry)
 	if err != nil {
 		return err
 	}
@@ -102,10 +102,10 @@ func (db *DB) Set(key, value []byte, expiration time.Duration) error {
 func (db *DB) Delete(key []byte) error {
 	now := time.Now()
 
-	dentry := NewTombstone(now.UnixMilli(), key)
+	entry := NewTombstone(now.UnixMilli(), key)
 	file := db.registry.GetActive()
 
-	if _, err := file.Write(dentry); err != nil {
+	if _, err := file.Write(entry); err != nil {
 		return err
 	}
 
