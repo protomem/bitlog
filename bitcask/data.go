@@ -26,21 +26,26 @@ const (
 var ErrFileNotFound = errors.New("file not found")
 
 type FileRegistry struct {
+	basePath string
+
 	mux   sync.RWMutex
 	table map[int64]*DataFile
 }
 
 func NewFileRegistry(path string) (*FileRegistry, error) {
+	werr := werrors.Wrap("fileReg/new")
+	path = filepath.Clean(path)
+
 	if err := os.MkdirAll(path, _dirPerm); err != nil {
-		return nil, err
+		return nil, werr(err, "create base folder")
 	}
 
 	activeFile, err := CreateDataFile(path)
 	if err != nil {
-		return nil, err
+		return nil, werr(err)
 	}
 
-	registry := &FileRegistry{table: make(map[int64]*DataFile, 1)}
+	registry := &FileRegistry{basePath: path, table: make(map[int64]*DataFile, 1)}
 	registry.SetActive(activeFile)
 
 	return registry, nil
@@ -92,9 +97,35 @@ func (reg *FileRegistry) Remove(id int64) {
 	delete(reg.table, id)
 }
 
-func (*FileRegistry) LoadAllFiles() error {
-	// TODO: Implement
+func (reg *FileRegistry) LoadAllFiles() error {
+	reg.mux.Lock()
+	defer reg.mux.Unlock()
+
+	werr := werrors.Wrap("fileReg/loadAllFiles")
+
+	files, err := reg.openAllFiles()
+	if err != nil {
+		return werr(err)
+	}
+
+	for _, file := range files {
+		if _, ok := reg.table[file.ID()]; ok {
+			return werr(errors.New("conflict files"), "load old files")
+		}
+
+		reg.table[file.ID()] = file
+	}
+
 	return nil
+}
+
+func (reg *FileRegistry) Range(fn func(*DataFile)) {
+	reg.mux.RLock()
+	defer reg.mux.RUnlock()
+
+	for _, file := range reg.table {
+		fn(file)
+	}
 }
 
 func (reg *FileRegistry) Close() error {
@@ -124,6 +155,11 @@ func (reg *FileRegistry) takeAllFiles() []*DataFile {
 	reg.table = make(map[int64]*DataFile)
 
 	return files
+}
+
+func (reg *FileRegistry) openAllFiles() ([]*DataFile, error) {
+	// TODO: Implement
+	return nil, nil
 }
 
 type Cursor struct {
