@@ -130,6 +130,9 @@ func (reg *FileRegistry) Range(fn func(*DataFile)) {
 }
 
 func (reg *FileRegistry) Close() error {
+	reg.mux.Lock()
+	defer reg.mux.Unlock()
+
 	files := reg.takeAllFiles()
 
 	var errs error
@@ -141,9 +144,6 @@ func (reg *FileRegistry) Close() error {
 }
 
 func (reg *FileRegistry) takeAllFiles() []*DataFile {
-	reg.mux.Lock()
-	defer reg.mux.Unlock()
-
 	files := make([]*DataFile, 0, len(reg.table))
 	for id, file := range reg.table {
 		if id == _activeFile {
