@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"hash/crc64"
 	"io"
 	"os"
@@ -110,7 +111,7 @@ func (reg *FileRegistry) LoadAllFiles() error {
 
 	for _, file := range files {
 		if _, ok := reg.table[file.ID()]; ok {
-			return werr(errors.New("conflict files"), "load old files")
+			return werr(fmt.Errorf("conflict files(%d)", file.ID()), "load old files")
 		}
 
 		reg.table[file.ID()] = file
@@ -158,8 +159,35 @@ func (reg *FileRegistry) takeAllFiles() []*DataFile {
 }
 
 func (reg *FileRegistry) openAllFiles() ([]*DataFile, error) {
-	// TODO: Implement
-	return nil, nil
+	werr := werrors.Wrap("openAllFiles")
+
+	activeFile := reg.table[_activeFile]
+	fsEntries, err := os.ReadDir(reg.basePath)
+	if err != nil {
+		return nil, werr(err)
+	}
+
+	var (
+		errs error
+
+		files = make([]*DataFile, 0, len(fsEntries))
+	)
+
+	for _, fsEntry := range fsEntries {
+		fsEntryName := filepath.Join(reg.basePath, fsEntry.Name())
+
+		if fsEntry.IsDir() || fsEntryName == activeFile.Name() {
+			continue
+		}
+
+		if file, err := OpenDataFile(fsEntryName); err != nil {
+			errs = errors.Join(errs, err)
+		} else {
+			files = append(files, file)
+		}
+	}
+
+	return files, werr(errs)
 }
 
 type Cursor struct {
@@ -205,6 +233,7 @@ func CreateDataFile(path string) (*DataFile, error) {
 
 func OpenDataFile(path string) (*DataFile, error) {
 	werr := werrors.Wrap("dataFile/open")
+	path = filepath.Clean(path)
 
 	_, name := filepath.Split(path)
 	if !strings.HasSuffix(name, _dataFileExt) {
