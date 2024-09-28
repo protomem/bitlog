@@ -148,10 +148,32 @@ func (db *DB) Close() error {
 }
 
 func (db *DB) indexing() error {
-	db.gmux.Lock()
-	defer db.gmux.Unlock()
+	var errs error
 
-	// TODO: Implement
+	db.registry.Range(func(file *DataFile) {
+		iter, err := NewDataFileIterator(file)
+		if err != nil {
+			errs = errors.Join(errs, err)
+			return
+		}
 
-	return werrors.Error(nil, "indexing")
+		for iter.Next() {
+			entry, cur, err := iter.Value()
+			if err != nil {
+				errs = errors.Join(errs, err)
+				continue
+			}
+
+			if entry.IsTombstone() || entry.IsExpired() {
+				if _, ok := db.keydir.Find(entry.Key); ok {
+					db.keydir.Remove(entry.Key)
+				}
+			} else {
+				idx := NewIndexEntry(file.ID(), entry.Created, entry.Key, cur)
+				db.keydir.Insert(idx)
+			}
+		}
+	})
+
+	return werrors.Error(errs, "indexing")
 }
