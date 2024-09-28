@@ -123,7 +123,7 @@ func TestDataFileIterator(t *testing.T) {
 	}
 
 	for i := 0; iter.Next(); i++ {
-		entry, err := iter.Value()
+		entry, _, err := iter.Value()
 		if err != nil {
 			t.Fatalf("failed to get value from iterator: %v", err)
 		}

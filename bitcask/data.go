@@ -328,7 +328,11 @@ func (file *DataFile) Close() error {
 type DataFileIterator struct {
 	reader FileReader
 
-	mux   sync.RWMutex
+	mux sync.RWMutex
+
+	head int64
+	cur  Cursor
+
 	value *DataEntry
 	err   error
 }
@@ -341,6 +345,8 @@ func NewDataFileIterator(file *DataFile) (*DataFileIterator, error) {
 
 	return &DataFileIterator{
 		reader: reader,
+		head:   0,
+		cur:    Cursor{},
 		value:  nil,
 		err:    nil,
 	}, nil
@@ -355,11 +361,16 @@ func (iter *DataFileIterator) Next() bool {
 	}
 
 	entry := new(DataEntry)
-	if _, err := entry.DeserializeFrom(iter.reader); err != nil {
+	read, err := entry.DeserializeFrom(iter.reader)
+	if err != nil {
 		iter.value = nil
+		iter.cur = Cursor{}
 		iter.err = err
 		return false
 	}
+
+	iter.cur = Cursor{Bytes: read, Offset: iter.head}
+	iter.head += int64(read)
 
 	iter.value = entry
 	iter.err = nil
@@ -367,11 +378,11 @@ func (iter *DataFileIterator) Next() bool {
 	return true
 }
 
-func (iter *DataFileIterator) Value() (*DataEntry, error) {
+func (iter *DataFileIterator) Value() (*DataEntry, Cursor, error) {
 	iter.mux.RLock()
 	defer iter.mux.RUnlock()
 
-	return iter.value, werrors.Error(iter.err, "dataFileIter")
+	return iter.value, iter.cur, werrors.Error(iter.err, "dataFileIter")
 }
 
 func (iter *DataFileIterator) Close() error {
