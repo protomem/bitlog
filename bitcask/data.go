@@ -2,6 +2,7 @@ package bitcask
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -9,17 +10,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
-	"github.com/protomem/bitlog/pkg/crand"
 	"github.com/protomem/bitlog/pkg/werrors"
 )
 
 const (
-	_activeFile  int64 = 0
-	_rangeFileID int64 = 1_000_000_000
+	_activeFile int64 = 0
 
 	_dirPerm = 0o777
 )
@@ -124,7 +125,16 @@ func (reg *FileRegistry) Range(fn func(*DataFile)) {
 	reg.mux.RLock()
 	defer reg.mux.RUnlock()
 
+	files := make([]*DataFile, 0, len(reg.table))
 	for _, file := range reg.table {
+		files = append(files, file)
+	}
+
+	slices.SortFunc(files, func(a *DataFile, b *DataFile) int {
+		return cmp.Compare(a.ID(), b.ID())
+	})
+
+	for _, file := range files {
 		fn(file)
 	}
 }
@@ -207,7 +217,7 @@ type DataFile struct {
 
 func CreateDataFile(path string) (*DataFile, error) {
 	werr := werrors.Wrap("dataFile/create")
-	id := crand.Range(_rangeFileID, (_rangeFileID*10)-1)
+	id := time.Now().UnixMilli()
 
 	name := strconv.FormatInt(id, 10) + _dataFileExt
 	path = filepath.Join(path, name)
