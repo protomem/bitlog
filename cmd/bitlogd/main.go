@@ -158,7 +158,3 @@ func main() {
 			Printf("failed to close server: %v", err)
 	}
 }
-
-func ignoreError[T any](value T, _ error) T {
-	return value
-}
