@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/protomem/bitlog/pkg/werrors"
 )
@@ -24,8 +23,6 @@ const (
 
 	_dirPerm = 0o777
 )
-
-var ErrFileNotFound = errors.New("file not found")
 
 type FileRegistry struct {
 	basePath string
@@ -178,8 +175,7 @@ func (reg *FileRegistry) openAllFiles() ([]*DataFile, error) {
 	}
 
 	var (
-		errs error
-
+		errs  error
 		files = make([]*DataFile, 0, len(fsEntries))
 	)
 
@@ -217,7 +213,7 @@ type DataFile struct {
 
 func CreateDataFile(path string) (*DataFile, error) {
 	werr := werrors.Wrap("dataFile/create")
-	id := time.Now().UnixMilli()
+	id := unixTimestamp()
 
 	name := strconv.FormatInt(id, 10) + _dataFileExt
 	path = filepath.Join(path, name)
@@ -246,21 +242,16 @@ func OpenDataFile(path string) (*DataFile, error) {
 	path = filepath.Clean(path)
 
 	_, name := filepath.Split(path)
-	if !strings.HasSuffix(name, _dataFileExt) {
-		return nil, werr(ErrFileNotFound, "wrong file extension")
-	}
-
-	idStr := strings.TrimSuffix(name, _dataFileExt)
-	id, err := strconv.ParseInt(idStr, 10, 64)
+	id, err := parseDataFileName(name)
 	if err != nil {
-		return nil, werr(ErrFileNotFound, "wrong filename")
+		return nil, werr(err)
 	}
 
 	writer := NewNopFileWriter()
 
 	reader, err := OpenOSFile(path)
 	if err != nil {
-		return nil, err
+		return nil, werr(err)
 	}
 
 	return &DataFile{
@@ -272,6 +263,20 @@ func OpenDataFile(path string) (*DataFile, error) {
 	}, nil
 }
 
+func parseDataFileName(name string) (id int64, err error) {
+	if !strings.HasSuffix(name, _dataFileExt) {
+		return 0, errors.New("wrong file extension")
+	}
+
+	idStr := strings.TrimSuffix(name, _dataFileExt)
+	id, err = strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		return 0, errors.New("wrong filename")
+	}
+
+	return
+}
+
 func (file *DataFile) ID() int64 {
 	return file.id
 }
@@ -281,8 +286,10 @@ func (file *DataFile) Name() string {
 }
 
 func (file *DataFile) Read(cur Cursor) (*DataEntry, error) {
-	werr := werrors.Wrap("dataFile/read")
-	data := make([]byte, cur.Bytes)
+	var (
+		werr = werrors.Wrap("dataFile/read")
+		data = make([]byte, cur.Bytes)
+	)
 
 	if _, err := file.reader.ReadAt(data, cur.Offset); err != nil {
 		return nil, werr(err)
@@ -378,7 +385,7 @@ func (iter *DataFileIterator) Next() bool {
 	return true
 }
 
-func (iter *DataFileIterator) Value() (*DataEntry, Cursor, error) {
+func (iter *DataFileIterator) Result() (*DataEntry, Cursor, error) {
 	iter.mux.RLock()
 	defer iter.mux.RUnlock()
 
@@ -466,17 +473,16 @@ func (entry *DataEntry) SerializeTo(w io.Writer) (int, error) {
 
 func (entry *DataEntry) Deserialize(data []byte) error {
 	reader := bytes.NewReader(data)
-	_, err := entry.DeserializeFrom(reader)
-	return err
+	return werrors.Raise(entry.DeserializeFrom(reader))
 }
 
 func (entry *DataEntry) DeserializeFrom(r io.Reader) (int, error) {
 	var (
-		werr      = werrors.Wrap("dataEntry/deserialize")
-		totalRead = 0
-
 		err  error
-		read int
+		werr = werrors.Wrap("dataEntry/deserialize")
+
+		totalRead int
+		read      int
 	)
 
 	head := make([]byte, 32)
