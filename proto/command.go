@@ -97,7 +97,7 @@ func (cmd Command) ValidateArgs(args ...string) error {
 			err = ErrWrongArgs
 		}
 	case SET:
-		if len(args) != 2 {
+		if len(args) != 2 && len(args) != 3 {
 			err = ErrWrongArgs
 		}
 	case DEL:

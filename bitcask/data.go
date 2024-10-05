@@ -526,5 +526,5 @@ func (entry *DataEntry) IsTombstone() bool {
 }
 
 func (entry *DataEntry) IsExpired() bool {
-	return entry.Expired != 0 && entry.Expired > entry.Created
+	return entry.Expired != 0 && entry.Expired <= unixTimestamp()
 }

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/protomem/bitlog/bitcask"
 	"github.com/protomem/bitlog/logging"
@@ -79,16 +80,16 @@ func main() {
 
 				value, err := db.Get([]byte(key))
 				if err != nil {
-					if errors.Is(err, bitcask.ErrKeyNotFound) {
-						proto.Null(w)
-						goto FLUSH
-					}
-
 					logging.
 						System(logging.Error).
 						Printf("failed to get key(%s) from db: %v", key, err)
 
-					proto.Error(w, errors.New("internal error"))
+					if errors.Is(err, bitcask.ErrKeyNotFound) {
+						proto.Null(w)
+					} else {
+						proto.Error(w, errors.New("internal error"))
+					}
+
 					goto FLUSH
 				}
 
@@ -97,7 +98,26 @@ func main() {
 				key := args[0]
 				value := args[1]
 
-				if err := db.Set([]byte(key), []byte(value), 0); err != nil {
+				var exp time.Duration
+				if len(args) == 3 {
+					var err error
+					exp, err = time.ParseDuration(args[2])
+					if err != nil {
+						logging.
+							System(logging.Error).
+							Printf("failed to parse expiration")
+						goto FLUSH
+					}
+				}
+
+				logging.
+					System(logging.Debug).
+					Printf(
+						"set key(%s) with value(%s) and expiration(%s) from connection(%s) ",
+						key, value, exp.String(), conn.RemoteAddr(),
+					)
+
+				if err := db.Set([]byte(key), []byte(value), exp); err != nil {
 					logging.
 						System(logging.Error).
 						Printf("failed to set key(%s) to db: %v", key, err)
