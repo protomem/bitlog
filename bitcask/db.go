@@ -107,7 +107,7 @@ func (db *DB) Set(key, value []byte, dur time.Duration) error {
 		return werr(err)
 	}
 
-	idx := NewIndexEntry(file.ID(), now, key, cursor)
+	idx := NewIndexEntry(file.ID(), now, exp, key, cursor)
 	db.keydir.Insert(idx)
 
 	return nil
@@ -169,7 +169,7 @@ func (db *DB) indexing() error {
 					db.keydir.Remove(entry.Key)
 				}
 			} else {
-				idx := NewIndexEntry(file.ID(), entry.Created, entry.Key, cur)
+				idx := NewIndexEntry(file.ID(), entry.Created, entry.Expired, entry.Key, cur)
 				db.keydir.Insert(idx)
 			}
 		}

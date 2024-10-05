@@ -29,6 +29,10 @@ func (state *IndexState) Keys() [][]byte {
 
 	keys := make([][]byte, 0, len(state.table))
 	for _, value := range state.table {
+		if value.IsExpired() {
+			continue
+		}
+
 		copyKey := append([]byte{}, value.Key...)
 		keys = append(keys, copyKey)
 	}
@@ -42,6 +46,11 @@ func (state *IndexState) Find(key []byte) (IndexEntry, bool) {
 
 	hashKey := maphash.Bytes(state.seed, key)
 	idx, ok := state.table[hashKey]
+
+	if idx.IsExpired() {
+		delete(state.table, hashKey)
+		return IndexEntry{}, false
+	}
 
 	return idx.Clone(), ok
 }
@@ -72,14 +81,16 @@ func (state *IndexState) Clear() {
 type IndexEntry struct {
 	File    int64
 	Created int64
+	Expired int64
 	Key     []byte
 	Cursor  Cursor
 }
 
-func NewIndexEntry(file int64, created int64, key []byte, cur Cursor) IndexEntry {
+func NewIndexEntry(file int64, created int64, expired int64, key []byte, cur Cursor) IndexEntry {
 	return IndexEntry{
 		File:    file,
 		Created: created,
+		Expired: expired,
 		Key:     key,
 		Cursor:  cur,
 	}
@@ -92,4 +103,8 @@ func (idx IndexEntry) Clone() IndexEntry {
 		Key:     append([]byte{}, idx.Key...),
 		Cursor:  idx.Cursor,
 	}
+}
+
+func (idx IndexEntry) IsExpired() bool {
+	return idx.Expired != 0 && idx.Expired <= unixTimestamp()
 }
