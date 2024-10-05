@@ -28,6 +28,18 @@ func TestDataEntry_Serialization(t *testing.T) {
 	}
 }
 
+func TestDataEntry_IsExpired(t *testing.T) {
+	entry := bitcask.NewDataEntry(time.Now().UnixMilli(), time.Now().Add(5*time.Hour).UnixMilli(), []byte("some_key"), []byte("some_value"))
+	if entry.IsExpired() {
+		t.Fatalf("failed to expiration check: expected false")
+	}
+
+	entry = bitcask.NewDataEntry(time.Now().UnixMilli(), time.Now().Add(-5*time.Hour).UnixMilli(), []byte("some_key"), []byte("some_value"))
+	if !entry.IsExpired() {
+		t.Fatalf("failed to expiration check: expected true")
+	}
+}
+
 func TestDataFile_CreateAndOpen(t *testing.T) {
 	path := t.TempDir()
 
