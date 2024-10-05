@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/protomem/bitlog/logging"
+	"github.com/protomem/bitlog/pkg/werrors"
 )
 
 var NopHandler = HandlerFunc(func(*Conn) {})
@@ -39,7 +40,7 @@ type Server struct {
 func NewServer(conf ServerConfig) (*Server, error) {
 	s := &Server{conf: conf}
 	if err := s.initListener(); err != nil {
-		return nil, err
+		return nil, werrors.Error(err, "tcpServer/new")
 	}
 
 	s.SetHandler(NopHandler)
@@ -68,6 +69,7 @@ func (s *Server) Listen() error {
 		}
 	}()
 
+	var errs error
 	for !s.isClose.Load() {
 		conn, err := s.lis.Accept()
 		if err != nil {
@@ -79,6 +81,8 @@ func (s *Server) Listen() error {
 				System(logging.Warn).
 				Printf("failed to accept connection: %v", err)
 
+			errs = errors.Join(errs, err)
+
 			continue
 		}
 
@@ -89,7 +93,7 @@ func (s *Server) Listen() error {
 		go s.handleConn(conn)
 	}
 
-	return nil
+	return werrors.Error(errs, "tcpServer/listen")
 }
 
 func (s *Server) Close() error {
@@ -116,25 +120,18 @@ func (s *Server) Close() error {
 		}
 	}
 
-	return errs
+	return werrors.Error(errs, "tcpServer/close")
 }
 
 func (s *Server) initListener() error {
 	var err error
-
 	s.lis, err = net.Listen("tcp", s.conf.ListenAddr)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 func (s *Server) closeListener() error {
-	if err := s.lis.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-		return err
-	}
-	return nil
+	err := s.lis.Close()
+	return werrors.Filter(err, net.ErrClosed)
 }
 
 func (s *Server) handleConn(stdConn net.Conn) {

@@ -1,6 +1,10 @@
 package network
 
-import "net"
+import (
+	"net"
+
+	"github.com/protomem/bitlog/pkg/werrors"
+)
 
 type Conn struct {
 	stdConn net.Conn
@@ -21,9 +25,11 @@ func (conn *Conn) RemoteAddr() net.Addr {
 }
 
 func (conn *Conn) Read(b []byte) (int, error) {
-	return conn.stdConn.Read(b)
+	read, err := conn.stdConn.Read(b)
+	return read, werrors.Error(err, "tcpConn/read")
 }
 
 func (conn *Conn) Write(b []byte) (int, error) {
-	return conn.stdConn.Write(b)
+	written, err := conn.stdConn.Write(b)
+	return written, werrors.Error(err, "tcpConn/write")
 }
