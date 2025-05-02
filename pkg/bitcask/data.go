@@ -14,9 +14,16 @@ import (
 	"github.com/protomem/bitlog/pkg/crand"
 )
 
+const (
+	_activeBucket     = 0
+	_driverNameSuffix = "blob"
+)
+
 var (
-	ErrInvalidSignature = fmt.Errorf("invalid signature")
-	ErrWrongBytes       = fmt.Errorf("wrong bytes")
+	ErrInvalidSignature    = fmt.Errorf("invalid signature")
+	ErrWrongBytes          = fmt.Errorf("wrong bytes")
+	ErrBucketNotFound      = fmt.Errorf("bucket not found")
+	ErrBucketAlreadyExists = fmt.Errorf("bucket already exists")
 )
 
 type Block struct {
@@ -145,7 +152,7 @@ func GenBucketID() int64 {
 }
 
 func FmtDriverName(id int64) string {
-	return fmt.Sprintf("%s.blob", strconv.FormatInt(id, 10))
+	return fmt.Sprintf("%s.%s", strconv.FormatInt(id, 10), _driverNameSuffix)
 }
 
 func ParseDriverName(name string) (int64, error) {
@@ -254,4 +261,73 @@ func (wal *WriteAheadLog) Read(ref Reference) ([]byte, error) {
 	}
 
 	return buf, nil
+}
+
+type Cluster struct {
+	mux sync.RWMutex
+
+	driverf driver.DriverFactory
+	buckets map[int64]*Bucket
+}
+
+func NewCluster(driverf driver.DriverFactory) *Cluster {
+	if driverf == nil {
+		panic("cluster/new: driver factory is nil")
+	}
+
+	return &Cluster{
+		driverf: driverf,
+		buckets: make(map[int64]*Bucket),
+	}
+}
+
+func (c *Cluster) CreateActiveBucket() error {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
+	const op = "cluster/createActiveBucket"
+
+	bid := GenBucketID()
+	dname := FmtDriverName(bid)
+
+	if _, ok := c.buckets[bid]; ok {
+		return fmt.Errorf("%s: %w", op, ErrBucketAlreadyExists)
+	}
+
+	driver, err := c.driverf.Driver(dname)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	bucket, err := NewBucket(driver)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	c.buckets[_activeBucket] = bucket
+	c.buckets[bucket.ID] = bucket
+
+	return nil
+}
+
+func (c *Cluster) GetBucket(id int64) (*Bucket, error) {
+	c.mux.RLock()
+	defer c.mux.RUnlock()
+
+	const op = "cluster/getBucket"
+
+	bucket, ok := c.buckets[id]
+	if !ok {
+		return nil, fmt.Errorf("%s(%d): %w", op, id, ErrBucketNotFound)
+	}
+
+	if bucket == nil {
+		return nil, fmt.Errorf("%s(%d): bucket is nil: %w", op, id, ErrBucketNotFound)
+	}
+
+	return bucket, nil
+}
+
+func (c *Cluster) GetActiveBucket() (*Bucket, error) {
+	return c.GetBucket(_activeBucket)
 }

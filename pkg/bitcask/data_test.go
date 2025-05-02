@@ -134,3 +134,40 @@ func TestBucket_WriteRead(t *testing.T) {
 		}
 	}
 }
+
+func TestCluster_ActiveBucket(t *testing.T) {
+	driverf := driver.NewFileFactory(t.TempDir())
+	cluster := bitcask.NewCluster(driverf)
+
+	numBucket := 10
+
+	for i := 0; i < numBucket; i++ {
+		if err := cluster.CreateActiveBucket(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if _, err := cluster.GetActiveBucket(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	entries, err := driverf.Entries()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, entry := range entries {
+		d, err := driver.OpenFile(driverf.Root(), entry.Name())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if _, err := bitcask.NewBucket(d); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	if len(entries) != numBucket {
+		t.Fatalf("expected %d, got %d", numBucket, len(entries))
+	}
+}
