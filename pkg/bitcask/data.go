@@ -28,7 +28,7 @@ type Block struct {
 
 func NewBlock(key, value []byte) *Block {
 	if len(key) == 0 {
-		panic("block: key is empty")
+		panic("block/new: key is empty")
 	}
 
 	return &Block{
