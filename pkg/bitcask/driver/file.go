@@ -8,31 +8,33 @@ import (
 )
 
 var (
-	_ DriverFactory = (*FileFactory)(nil)
+	_ DriverFactory = (*FileSystem)(nil)
 	_ Driver        = (*File)(nil)
 )
 
-type FileFactory struct {
+type FileSystem struct {
 	root string
 }
 
-func NewFileFactory(root string) *FileFactory {
+func NewFileSystem(root string) *FileSystem {
 	root = filepath.Clean(root)
 
-	return &FileFactory{
+	return &FileSystem{
 		root: root,
 	}
 }
 
-func (ff *FileFactory) Driver(name string) (Driver, error) {
+func (ff *FileSystem) Driver(name string) (Driver, error) {
+	// TODO: check if file exists
+	// TODO: add cache for opened files
 	return CreateFile(ff.root, name)
 }
 
-func (ff *FileFactory) Root() string {
+func (ff *FileSystem) Root() string {
 	return ff.root
 }
 
-func (ff *FileFactory) Entries() ([]fs.DirEntry, error) {
+func (ff *FileSystem) Entries() ([]fs.DirEntry, error) {
 	entries, err := os.ReadDir(ff.root)
 	if err != nil {
 		return nil, fmt.Errorf("file/entries: %w", err)

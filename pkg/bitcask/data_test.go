@@ -136,7 +136,7 @@ func TestBucket_WriteRead(t *testing.T) {
 }
 
 func TestCluster_ActiveBucket(t *testing.T) {
-	driverf := driver.NewFileFactory(t.TempDir())
+	driverf := driver.NewFileSystem(t.TempDir())
 	cluster := bitcask.NewCluster(driverf)
 
 	numBucket := 10
