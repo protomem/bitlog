@@ -101,10 +101,22 @@ func (b *Block) Verify() error {
 	return nil
 }
 
-// genSignature generates block signature, without Signature field
+func (b *Block) shallowCopy() *Block {
+	return &Block{
+		Signature: b.Signature,
+		Timestamp: b.Timestamp,
+		Key:       b.Key,
+		Value:     b.Value,
+	}
+}
+
 func (b *Block) genSignature() uint64 {
-	data := b.Serialize()
-	sign := crc64.Checksum(data[8:], crc64.MakeTable(crc64.ECMA))
+	copyBlock := b.shallowCopy()
+	copyBlock.Signature = 0
+
+	data := copyBlock.Serialize()
+	sign := crc64.Checksum(data, crc64.MakeTable(crc64.ECMA))
+
 	return sign
 }
 
