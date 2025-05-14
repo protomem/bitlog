@@ -224,7 +224,7 @@ func (b *Bucket) Read(ref Reference) (*Block, error) {
 }
 
 type WriteAheadLog struct {
-	mux    sync.RWMutex
+	lock   sync.RWMutex
 	head   int64
 	driver driver.Driver
 }
@@ -241,8 +241,8 @@ func NewWriteAheadLog(driver driver.Driver) *WriteAheadLog {
 }
 
 func (wal *WriteAheadLog) Write(b []byte) (Reference, error) {
-	wal.mux.Lock()
-	defer wal.mux.Unlock()
+	wal.lock.Lock()
+	defer wal.lock.Unlock()
 
 	const op = "wal/write"
 
@@ -266,8 +266,8 @@ func (wal *WriteAheadLog) Write(b []byte) (Reference, error) {
 }
 
 func (wal *WriteAheadLog) Read(ref Reference) ([]byte, error) {
-	wal.mux.RLock()
-	defer wal.mux.RUnlock()
+	wal.lock.RLock()
+	defer wal.lock.RUnlock()
 
 	buf := make([]byte, ref.Size)
 
@@ -279,7 +279,7 @@ func (wal *WriteAheadLog) Read(ref Reference) ([]byte, error) {
 }
 
 type Cluster struct {
-	mux sync.RWMutex
+	lock sync.RWMutex
 
 	driverf driver.DriverFactory
 	buckets map[int64]*Bucket
@@ -297,8 +297,8 @@ func NewCluster(driverf driver.DriverFactory) *Cluster {
 }
 
 func (c *Cluster) CreateActiveBucket() error {
-	c.mux.Lock()
-	defer c.mux.Unlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
 
 	const op = "cluster/createActiveBucket"
 
@@ -326,8 +326,8 @@ func (c *Cluster) CreateActiveBucket() error {
 }
 
 func (c *Cluster) GetBucket(id int64) (*Bucket, error) {
-	c.mux.RLock()
-	defer c.mux.RUnlock()
+	c.lock.RLock()
+	defer c.lock.RUnlock()
 
 	const op = "cluster/getBucket"
 
