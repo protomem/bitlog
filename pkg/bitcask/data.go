@@ -136,8 +136,7 @@ type Reference struct {
 }
 
 type Bucket struct {
-	ID int64
-
+	id  int64
 	wal *WriteAheadLog
 }
 
@@ -154,7 +153,7 @@ func NewBucket(driver driver.Driver) (*Bucket, error) {
 	}
 
 	return &Bucket{
-		ID:  id,
+		id:  id,
 		wal: NewWriteAheadLog(driver),
 	}, nil
 }
@@ -177,6 +176,10 @@ func ParseDriverName(name string) (int64, error) {
 	}
 
 	return id, nil
+}
+
+func (b *Bucket) ID() int64 {
+	return b.id
 }
 
 func (b *Bucket) Write(block *Block) (Reference, error) {
@@ -317,7 +320,7 @@ func (c *Cluster) CreateActiveBucket() error {
 	}
 
 	c.buckets[_activeBucket] = bucket
-	c.buckets[bucket.ID] = bucket
+	c.buckets[bucket.ID()] = bucket
 
 	return nil
 }
