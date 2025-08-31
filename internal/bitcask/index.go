@@ -8,7 +8,8 @@ type Index struct {
 }
 
 type Record struct {
-	Key     []byte
-	Cluster CID
-	Ref     Slice
+	Key []byte
+
+	File FID
+	Ref  Slice
 }

@@ -5,15 +5,16 @@ import (
 	"sync"
 )
 
-type CID = int64
+type FID = int64
 
 type Journal struct {
-	Mu sync.RWMutex
+	Mu    sync.RWMutex
+	Files map[FID]*File
 }
 
-type Cluster struct {
+type File struct {
 	Mu sync.RWMutex
-	ID CID
+	ID FID
 	F  *os.File
 }
 
