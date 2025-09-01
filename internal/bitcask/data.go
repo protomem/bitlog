@@ -1,16 +1,20 @@
 package bitcask
 
 import (
+	"bytes"
 	"encoding/binary"
 	"hash/crc64"
 	"io"
 	"os"
 	"sync"
+	"time"
 )
 
 const (
 	_blockUnsafeHeaderSize = 24
 	_blockHeaderSize       = 32
+
+	_blockValueTombstone = 0
 )
 
 type FID = int64
@@ -36,8 +40,14 @@ type Block struct {
 	Value []byte
 }
 
-func NewBlock() *Block {
-	return &Block{}
+func NewBlock(key []byte, value []byte, exp int64) *Block {
+	return &Block{
+		Timestamp: time.Now().Unix(),
+		Expiry:    exp,
+
+		Key:   key,
+		Value: value,
+	}
 }
 
 func (b *Block) UnsafeSerializeHeaderTo(dest []byte) error {
@@ -166,6 +176,13 @@ func (b *Block) SetSign() uint64 {
 
 func (b *Block) CheckSign() bool {
 	return b.Signature == b.GenSign(b.UnsafeSerialize())
+}
+
+func (b *Block) Valid() bool {
+	now := time.Now().Unix()
+	return b.CheckSign() &&
+		(b.Expiry <= 0 || (b.Expiry <= b.Timestamp && now < b.Expiry)) &&
+		!bytes.Equal(b.Value, []byte{_blockValueTombstone})
 }
 
 type Slice struct {
