@@ -5,7 +5,24 @@ import (
 	"time"
 
 	"github.com/protomem/bitlog/internal/bitcask"
+	"github.com/protomem/bitlog/pkg/crand"
 )
+
+func TestFileName(t *testing.T) {
+	t.Run("Base case", func(t *testing.T) {
+		fid := bitcask.FID(crand.Range(1000, 9999))
+
+		originFileName := bitcask.FormatFileName(bitcask.FID(fid))
+
+		parsedFID, err := bitcask.ParseFileName(originFileName)
+		if err != nil {
+			t.Fatalf("Failed to parse file name: %v", err)
+		}
+		if parsedFID != fid {
+			t.Errorf("Expected FID %d, got %d", fid, parsedFID)
+		}
+	})
+}
 
 func TestBlock_Serialization(t *testing.T) {
 	t.Run("Base case", func(t *testing.T) {

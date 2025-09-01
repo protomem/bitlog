@@ -6,6 +6,9 @@ import (
 	"hash/crc64"
 	"io"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -17,11 +20,35 @@ const (
 	_blockValueTombstone = 0
 )
 
-type FID = int64
+type FID int64
+
+func (fid FID) String() string {
+	return strconv.FormatInt(int64(fid), 10)
+}
+
+func (fid *FID) FromString(str string) error {
+	val, err := strconv.ParseInt(str, 10, 64)
+	if err != nil {
+		return err
+	}
+
+	*fid = FID(val)
+	return nil
+}
 
 type Journal struct {
 	Mu    sync.RWMutex
 	Files map[FID]*File
+}
+
+func FormatFileName(id FID) string {
+	return filepath.Join(id.String(), _fileExt)
+}
+
+func ParseFileName(name string) (FID, error) {
+	var id FID
+	name = strings.TrimSuffix(name, filepath.Ext(name))
+	return id, id.FromString(filepath.Base(name))
 }
 
 type File struct {
