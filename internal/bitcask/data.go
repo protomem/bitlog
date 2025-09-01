@@ -2,10 +2,15 @@ package bitcask
 
 import (
 	"encoding/binary"
-	"errors"
 	"hash/crc64"
+	"io"
 	"os"
 	"sync"
+)
+
+const (
+	_blockUnsafeHeaderSize = 24
+	_blockHeaderSize       = 32
 )
 
 type FID = int64
@@ -35,60 +40,118 @@ func NewBlock() *Block {
 	return &Block{}
 }
 
-func (b *Block) Serialize() []byte {
-	data := make([]byte, 0)
-
-	data = binary.LittleEndian.AppendUint64(data, b.Signature)
-
-	data = binary.LittleEndian.AppendUint64(data, uint64(b.Timestamp))
-	data = binary.LittleEndian.AppendUint64(data, uint64(b.Expiry))
-
-	data = binary.LittleEndian.AppendUint32(data, uint32(len(b.Key)))
-	data = binary.LittleEndian.AppendUint32(data, uint32(len(b.Value)))
-
-	data = append(data, b.Key...)
-	data = append(data, b.Value...)
-
-	return data
-}
-
-func (b *Block) UnsafeSerialize() []byte {
-	data := make([]byte, 0)
-
-	data = binary.LittleEndian.AppendUint64(data, uint64(b.Timestamp))
-	data = binary.LittleEndian.AppendUint64(data, uint64(b.Expiry))
-
-	data = binary.LittleEndian.AppendUint32(data, uint32(len(b.Key)))
-	data = binary.LittleEndian.AppendUint32(data, uint32(len(b.Value)))
-
-	data = append(data, b.Key...)
-	data = append(data, b.Value...)
-
-	return data
-}
-
-func (b *Block) Deserialize(data []byte) error {
-	if len(data) < b.MinSize() {
-		return errors.New("invalid block size")
+func (b *Block) UnsafeSerializeHeaderTo(dest []byte) error {
+	if len(dest) < _blockUnsafeHeaderSize {
+		return io.ErrShortBuffer
 	}
 
-	b.Signature = binary.LittleEndian.Uint64(data)
+	binary.LittleEndian.PutUint64(dest[0:8], uint64(b.Timestamp))
+	binary.LittleEndian.PutUint64(dest[8:16], uint64(b.Expiry))
 
-	b.Timestamp = int64(binary.LittleEndian.Uint64(data[8:]))
-	b.Expiry = int64(binary.LittleEndian.Uint64(data[16:]))
-
-	keySize := int(binary.LittleEndian.Uint32(data[24:]))
-	valueSize := int(binary.LittleEndian.Uint32(data[28:]))
-
-	b.Key = data[32 : 32+keySize]
-	b.Value = data[32+keySize : 32+keySize+valueSize]
+	binary.LittleEndian.PutUint32(dest[16:20], uint32(len(b.Key)))
+	binary.LittleEndian.PutUint32(dest[20:24], uint32(len(b.Value)))
 
 	return nil
 }
 
-func (*Block) MinSize() int {
-	var emptyB Block
-	return len(emptyB.Serialize())
+func (b *Block) SerializeHeaderTo(dest []byte) error {
+	if len(dest) < _blockHeaderSize {
+		return io.ErrShortBuffer
+	}
+
+	binary.LittleEndian.PutUint64(dest, b.Signature)
+
+	return b.UnsafeSerializeHeaderTo(dest[8:])
+}
+
+func (b *Block) SerializeBodyTo(dest []byte) error {
+	if len(dest) < len(b.Key)+len(b.Value) {
+		return io.ErrShortBuffer
+	}
+
+	copy(dest, b.Key)
+	copy(dest[len(b.Key):], b.Value)
+
+	return nil
+}
+
+func (b *Block) UnsafeSerializeTo(dest []byte) error {
+	if err := b.UnsafeSerializeHeaderTo(dest); err != nil {
+		return err
+	}
+
+	if len(dest) < _blockUnsafeHeaderSize+len(b.Key)+len(b.Value) {
+		return io.ErrShortBuffer
+	}
+
+	if err := b.SerializeBodyTo(dest[_blockUnsafeHeaderSize:]); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (b *Block) SerializeTo(dest []byte) error {
+	if err := b.SerializeHeaderTo(dest); err != nil {
+		return err
+	}
+
+	if len(dest) < _blockHeaderSize+len(b.Key)+len(b.Value) {
+		return io.ErrShortBuffer
+	}
+
+	if err := b.SerializeBodyTo(dest[_blockHeaderSize:]); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (b *Block) Serialize() []byte {
+	data := make([]byte, _blockHeaderSize+len(b.Key)+len(b.Value))
+	_ = b.SerializeTo(data)
+	return data
+}
+
+func (b *Block) UnsafeSerialize() []byte {
+	data := make([]byte, _blockUnsafeHeaderSize+len(b.Key)+len(b.Value))
+	_ = b.UnsafeSerializeTo(data)
+	return data
+}
+
+func (b *Block) UnsafeDeserialize(data []byte) error {
+	if len(data) < _blockUnsafeHeaderSize {
+		return io.ErrShortBuffer
+	}
+
+	b.Timestamp = int64(binary.LittleEndian.Uint64(data[0:8]))
+	b.Expiry = int64(binary.LittleEndian.Uint64(data[8:16]))
+
+	keySize := int(binary.LittleEndian.Uint32(data[16:20]))
+	valueSize := int(binary.LittleEndian.Uint32(data[20:24]))
+
+	if len(data) < _blockUnsafeHeaderSize+keySize+valueSize {
+		return io.ErrShortBuffer
+	}
+
+	b.Key = append([]byte{}, data[24:24+keySize]...)
+	b.Value = append([]byte{}, data[24+keySize:24+keySize+valueSize]...)
+
+	return nil
+}
+
+func (b *Block) Deserialize(data []byte) error {
+	if len(data) < _blockHeaderSize {
+		return io.ErrShortBuffer
+	}
+
+	b.Signature = binary.LittleEndian.Uint64(data[0:8])
+
+	if err := b.UnsafeDeserialize(data[8:]); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (*Block) GenSign(data []byte) uint64 {
@@ -101,7 +164,7 @@ func (b *Block) SetSign() uint64 {
 	return b.Signature
 }
 
-func (b *Block) Verify() bool {
+func (b *Block) CheckSign() bool {
 	return b.Signature == b.GenSign(b.UnsafeSerialize())
 }
 
