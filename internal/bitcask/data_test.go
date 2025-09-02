@@ -1,6 +1,7 @@
 package bitcask_test
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -15,6 +16,22 @@ func TestFileName(t *testing.T) {
 		originFileName := bitcask.FormatFileName(bitcask.FID(fid))
 
 		parsedFID, err := bitcask.ParseFileName(originFileName)
+		if err != nil {
+			t.Fatalf("Failed to parse file name: %v", err)
+		}
+		if parsedFID != fid {
+			t.Errorf("Expected FID %d, got %d", fid, parsedFID)
+		}
+	})
+
+	t.Run("Long path", func(t *testing.T) {
+		preffix := "/some/long/path"
+		fid := bitcask.FID(crand.Range(1000, 9999))
+
+		originFileName := bitcask.FormatFileName(bitcask.FID(fid))
+		longpath := filepath.Join(preffix, originFileName)
+
+		parsedFID, err := bitcask.ParseFileName(longpath)
 		if err != nil {
 			t.Fatalf("Failed to parse file name: %v", err)
 		}

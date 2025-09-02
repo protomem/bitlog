@@ -18,6 +18,8 @@ const (
 	_blockHeaderSize       = 32
 
 	_blockValueTombstone = 0
+
+	_fileExt = ".blocks"
 )
 
 type FID int64
@@ -42,13 +44,14 @@ type Journal struct {
 }
 
 func FormatFileName(id FID) string {
-	return filepath.Join(id.String(), _fileExt)
+	return id.String() + _fileExt
 }
 
 func ParseFileName(name string) (FID, error) {
 	var id FID
+	_, name = filepath.Split(name)
 	name = strings.TrimSuffix(name, filepath.Ext(name))
-	return id, id.FromString(filepath.Base(name))
+	return id, id.FromString(name)
 }
 
 type File struct {
