@@ -85,17 +85,12 @@ func (db *DB) Delete(key []byte) error {
 		Key:       slices.Clone(key),
 	}
 
-	ref, err := db.jrnl.Append(record)
+	_, err := db.jrnl.Delete(record)
 	if err != nil {
 		return err
 	}
 
-	entry := Entry{
-		Key: slices.Clone(key),
-		Ref: ref,
-	}
-
-	db.idx.Insert(entry)
+	db.idx.Remove(string(key))
 
 	return nil
 }
