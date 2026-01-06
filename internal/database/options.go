@@ -1,4 +1,4 @@
-package bitcask
+package database
 
 type Option func(*options) error
 
