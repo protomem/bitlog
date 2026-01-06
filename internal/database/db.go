@@ -12,8 +12,8 @@ var ErrKeyNotFound = errors.New("key not found")
 type DB struct {
 	opts options
 
-	idx *Index
-	jrn *Journal
+	idx  *Index
+	jrnl *Journal
 }
 
 func New(opts ...Option) (*DB, error) {
@@ -25,7 +25,7 @@ func New(opts ...Option) (*DB, error) {
 	db := &DB{
 		opts: appliedOpts,
 		idx:  NewIndex(),
-		jrn:  NewJournal(),
+		jrnl: NewJournal(),
 	}
 
 	return db, nil
@@ -46,7 +46,7 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 		return nil, ErrKeyNotFound
 	}
 
-	record, ok, err := db.jrn.Find(entry.Ref)
+	record, ok, err := db.jrnl.Find(entry.Ref)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (db *DB) Put(key []byte, value []byte) error {
 		Value:     slices.Clone(value),
 	}
 
-	ref, err := db.jrn.Append(record)
+	ref, err := db.jrnl.Append(record)
 	if err != nil {
 		return err
 	}
@@ -85,7 +85,7 @@ func (db *DB) Delete(key []byte) error {
 		Key:       slices.Clone(key),
 	}
 
-	ref, err := db.jrn.Append(record)
+	ref, err := db.jrnl.Append(record)
 	if err != nil {
 		return err
 	}
@@ -168,15 +168,15 @@ func NewJournal() *Journal {
 	return &Journal{}
 }
 
-func (jrn *Journal) Find(ref Reference) (Record, bool, error) {
-	jrn.mu.RLock()
-	defer jrn.mu.RUnlock()
+func (jrnl *Journal) Find(ref Reference) (Record, bool, error) {
+	jrnl.mu.RLock()
+	defer jrnl.mu.RUnlock()
 
-	if len(jrn.records) < int(ref.Address) {
+	if len(jrnl.records) < int(ref.Address) {
 		return Record{}, false, nil
 	}
 
-	record := jrn.records[ref.Address]
+	record := jrnl.records[ref.Address]
 	if record.Key == nil || record.Value == nil {
 		return Record{}, false, ErrCorruptedRecord
 	}
@@ -187,25 +187,25 @@ func (jrn *Journal) Find(ref Reference) (Record, bool, error) {
 	return record, true, nil
 }
 
-func (jrn *Journal) Append(record Record) (Reference, error) {
+func (jrnl *Journal) Append(record Record) (Reference, error) {
 	record.opcode = _operationPut
 
-	return jrn.addRecord(record)
+	return jrnl.addRecord(record)
 }
 
-func (jrn *Journal) Delete(record Record) (Reference, error) {
+func (jrnl *Journal) Delete(record Record) (Reference, error) {
 	record.opcode = _operationDelete
 	record.Value = nil
 
-	return jrn.addRecord(record)
+	return jrnl.addRecord(record)
 }
 
-func (jrn *Journal) addRecord(record Record) (Reference, error) {
-	jrn.mu.Lock()
-	defer jrn.mu.Unlock()
+func (jrnl *Journal) addRecord(record Record) (Reference, error) {
+	jrnl.mu.Lock()
+	defer jrnl.mu.Unlock()
 
-	jrn.records = append(jrn.records, record)
-	address := int64(len(jrn.records) - 1)
+	jrnl.records = append(jrnl.records, record)
+	address := int64(len(jrnl.records) - 1)
 
 	return Reference{Address: address}, nil
 }
