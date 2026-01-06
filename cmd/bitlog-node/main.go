@@ -10,11 +10,16 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
 
-const _appName = "bitlog-node"
+const (
+	_appName = "bitlog-node"
+
+	_shutdownTimeout = 15 * time.Second
+)
 
 var (
 	_listenAddr = flag.String("addr", ":3957", "Listen address")
@@ -29,11 +34,21 @@ func main() {
 		log.Panicf("Failed to listen on %s: %v", *_listenAddr, err)
 	}
 
-	log.Printf("Listening on %s ...", *_listenAddr)
+	var (
+		runnerGroup sync.WaitGroup
+		isRunning   atomic.Bool
+	)
 
-	var runnerGroup sync.WaitGroup
 	runnerGroup.Go(func() {
-		for {
+		isRunning.Store(true)
+		defer func() {
+			isRunning.CompareAndSwap(true, false)
+			log.Printf("Stop listening")
+		}()
+
+		log.Printf("Listening on %s ...", *_listenAddr)
+
+		for isRunning.Load() {
 			conn, err := listener.Accept()
 			if err != nil {
 				if errors.Is(err, net.ErrClosed) {
@@ -54,10 +69,16 @@ func main() {
 
 	log.Printf("Shutdown initiated ...")
 
-	ctxShutdown, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctxShutdown, cancel := context.WithTimeout(context.Background(), _shutdownTimeout)
 	defer cancel()
 
 	var shutdownGroup sync.WaitGroup
+
+	shutdownGroup.Go(func() {
+		isRunning.Store(false)
+		log.Printf("Runner group send shutdown signal")
+	})
+
 	shutdownGroup.Go(func() {
 		if err := listener.Close(); err != nil {
 			log.Printf("Failed close listener: %v", err)
@@ -72,6 +93,7 @@ func main() {
 		runnerGroup.Wait()
 		log.Printf("Runner group done")
 
+		shutdownDone <- struct{}{}
 		close(shutdownDone)
 	}()
 
