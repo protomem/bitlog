@@ -50,7 +50,7 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
+	if !ok || record.OpCode != OperationPut {
 		return nil, ErrKeyNotFound
 	}
 
@@ -60,11 +60,12 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 func (db *DB) Put(key []byte, value []byte) error {
 	record := Record{
 		Timestamp: time.Now().Unix(),
+		OpCode:    OperationPut,
 		Key:       slices.Clone(key),
 		Value:     slices.Clone(value),
 	}
 
-	ref, err := db.jrnl.Append(record)
+	ref, err := db.jrnl.Write(record)
 	if err != nil {
 		return err
 	}
@@ -82,10 +83,11 @@ func (db *DB) Put(key []byte, value []byte) error {
 func (db *DB) Delete(key []byte) error {
 	record := Record{
 		Timestamp: time.Now().Unix(),
+		OpCode:    OperationDelete,
 		Key:       slices.Clone(key),
 	}
 
-	_, err := db.jrnl.Delete(record)
+	_, err := db.jrnl.Write(record)
 	if err != nil {
 		return err
 	}
@@ -139,19 +141,19 @@ func (idx *Index) Remove(key string) {
 
 var ErrCorruptedRecord = errors.New("corrupted record")
 
-type operationCode int
+type OperationCode int
 
 const (
-	_operationPut operationCode = iota
-	_operationDelete
+	OperationPut OperationCode = iota
+	OperationDelete
 )
 
 type Record struct {
-	opcode operationCode
-
 	Timestamp int64
-	Key       []byte
-	Value     []byte
+	OpCode    OperationCode
+
+	Key   []byte
+	Value []byte
 }
 
 type Journal struct {
@@ -175,27 +177,11 @@ func (jrnl *Journal) Find(ref Reference) (Record, bool, error) {
 	if record.Key == nil || record.Value == nil {
 		return Record{}, false, ErrCorruptedRecord
 	}
-	if record.opcode != _operationPut {
-		return Record{}, false, nil
-	}
 
 	return record, true, nil
 }
 
-func (jrnl *Journal) Append(record Record) (Reference, error) {
-	record.opcode = _operationPut
-
-	return jrnl.addRecord(record)
-}
-
-func (jrnl *Journal) Delete(record Record) (Reference, error) {
-	record.opcode = _operationDelete
-	record.Value = nil
-
-	return jrnl.addRecord(record)
-}
-
-func (jrnl *Journal) addRecord(record Record) (Reference, error) {
+func (jrnl *Journal) Write(record Record) (Reference, error) {
 	jrnl.mu.Lock()
 	defer jrnl.mu.Unlock()
 
