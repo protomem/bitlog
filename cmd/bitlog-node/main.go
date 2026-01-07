@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -13,6 +15,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/protomem/bitlog/internal/redisproto"
 )
 
 const (
@@ -109,15 +113,20 @@ func handleConnection(conn net.Conn) {
 	log.Printf("Accepted connection from %s", conn.RemoteAddr())
 	defer conn.Close()
 
-	buf := make([]byte, 1024)
 	for {
-		n, err := conn.Read(buf)
-		if err != nil {
-			log.Printf("Failed to read from connection: %v", err)
-			return
-		}
+		reader := bufio.NewReader(conn)
+		scanner := bufio.NewScanner(reader)
 
-		log.Printf("Received %d bytes from %s", n, conn.RemoteAddr())
+		for scanner.Scan() {
+			buf := bytes.NewBuffer(scanner.Bytes())
+			cmd, err := redisproto.CommandFromReader(buf)
+			if err != nil {
+				log.Printf("Failed to parse command: %v", err)
+				continue
+			}
+
+			log.Printf("Received command: %s", cmd)
+		}
 	}
 }
 
