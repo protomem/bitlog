@@ -2,6 +2,7 @@ package database
 
 import (
 	"io"
+	"os"
 	"sync"
 )
 
@@ -9,8 +10,26 @@ type ReadDriver interface {
 	io.ReaderAt
 }
 
+func NewFileReader(path string) (*os.File, error) {
+	file, err := os.OpenFile(path, os.O_RDONLY, 0o666)
+	if err != nil {
+		return nil, err
+	}
+
+	return file, nil
+}
+
 type WriteDriver interface {
 	io.WriterAt
+}
+
+func NewFileWriter(path string) (*os.File, error) {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o666)
+	if err != nil {
+		return nil, err
+	}
+
+	return file, nil
 }
 
 type WriteAheadLog struct {

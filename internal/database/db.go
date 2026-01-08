@@ -2,6 +2,7 @@ package database
 
 import (
 	"errors"
+	"os"
 	"slices"
 	"time"
 )
@@ -10,6 +11,9 @@ var ErrKeyNotFound = errors.New("key not found")
 
 type DB struct {
 	opts options
+
+	wd *os.File
+	rd *os.File
 
 	idx  *Index
 	jrnl *Journal
@@ -21,15 +25,40 @@ func New(opts ...Option) (*DB, error) {
 		return nil, err
 	}
 
-	wal := NewWriteAheadLog(nil, nil)
+	wd, err := NewFileWriter(appliedOpts.RootPath)
+	if err != nil {
+		return nil, err
+	}
+
+	rd, err := NewFileReader(appliedOpts.RootPath)
+	if err != nil {
+		return nil, err
+	}
+
+	wal := NewWriteAheadLog(wd, rd)
 
 	db := &DB{
 		opts: appliedOpts,
+		wd:   wd,
+		rd:   rd,
 		idx:  NewIndex(),
 		jrnl: NewJournal(wal),
 	}
 
 	return db, nil
+}
+
+func (db *DB) Close() error {
+	if err := db.wd.Close(); err != nil {
+		return err
+	}
+
+	if err := db.rd.Close(); err != nil {
+		return err
+
+	}
+
+	return nil
 }
 
 func (db *DB) Has(key []byte) error {

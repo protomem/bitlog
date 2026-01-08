@@ -33,7 +33,7 @@ func main() {
 
 	db, err := database.New()
 	if err != nil {
-		log.Panicf("Failed to connect to database: %v", err)
+		log.Panicf("Failed to initialize database: %v", err)
 	}
 	handler := NewHandler(db)
 
@@ -90,6 +90,12 @@ func main() {
 	shutdownGroup.Go(func() {
 		if err := listener.Close(); err != nil {
 			log.Printf("Failed close listener: %v", err)
+		}
+	})
+
+	shutdownGroup.Go(func() {
+		if err := db.Close(); err != nil {
+			log.Printf("Failed close database: %v", err)
 		}
 	})
 
