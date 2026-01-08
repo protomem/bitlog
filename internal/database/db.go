@@ -76,11 +76,11 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 		return nil, ErrKeyNotFound
 	}
 
-	record, ok, err := db.jrnl.Find(entry.Ref)
+	record, err := db.jrnl.Find(entry.Ref)
 	if err != nil {
 		return nil, err
 	}
-	if !ok || record.OpCode != OperationPut {
+	if record.OpCode != OperationPut {
 		return nil, ErrKeyNotFound
 	}
 

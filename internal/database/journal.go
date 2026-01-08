@@ -1,6 +1,8 @@
 package database
 
 import (
+	"bytes"
+	"encoding/gob"
 	"errors"
 	"sync"
 )
@@ -24,47 +26,53 @@ type Record struct {
 
 type Reference struct {
 	Address int64
+	Size    int64
 }
 
 type Journal struct {
-	mu      sync.RWMutex
-	records []Record
-	wal     *WriteAheadLog
+	mu  sync.RWMutex
+	wal *WriteAheadLog
 }
 
 func NewJournal(wal *WriteAheadLog) *Journal {
 	return &Journal{wal: wal}
 }
 
-func (jrnl *Journal) Find(ref Reference) (Record, bool, error) {
+func (jrnl *Journal) Find(ref Reference) (Record, error) {
 	jrnl.mu.RLock()
 	defer jrnl.mu.RUnlock()
 
-	if len(jrnl.records) < int(ref.Address) {
-		return Record{}, false, nil
+	blob := make([]byte, ref.Size)
+	if _, err := jrnl.wal.Read(ref.Address, blob); err != nil {
+		return Record{}, err
 	}
 
-	record := jrnl.records[ref.Address]
-	if record.Key == nil || record.Value == nil {
-		return Record{}, false, ErrCorruptedRecord
+	buf := bytes.NewBuffer(blob)
+	decoder := gob.NewDecoder(buf)
+
+	var record Record
+	if err := decoder.Decode(&record); err != nil {
+		return Record{}, err
 	}
 
-	return record, true, nil
+	return record, nil
 }
 
 func (jrnl *Journal) Write(record Record) (Reference, error) {
 	jrnl.mu.Lock()
 	defer jrnl.mu.Unlock()
 
-	jrnl.records = append(jrnl.records, record)
-	address := int64(len(jrnl.records) - 1)
+	buf := new(bytes.Buffer)
+	encoder := gob.NewEncoder(buf)
 
-	return Reference{Address: address}, nil
-}
+	if err := encoder.Encode(record); err != nil {
+		return Reference{}, err
+	}
 
-func (jrnl *Journal) Flush() error {
-	jrnl.mu.Lock()
-	defer jrnl.mu.Unlock()
+	address, written, err := jrnl.wal.Write(buf.Bytes())
+	if err != nil {
+		return Reference{}, err
+	}
 
-	return nil
+	return Reference{Address: address, Size: int64(written)}, nil
 }
