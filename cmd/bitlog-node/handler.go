@@ -66,6 +66,21 @@ func (h *Handler) Handle(conn net.Conn) {
 					log.Printf("Failed to get key: %v", err)
 				}
 				fmt.Fprintf(conn, "$%d\r\n%s\r\n", len(value), value)
+
+			case redisproto.OpDel:
+				if len(cmd.Args) != 1 {
+					log.Printf("Invalid DEL command: %s", cmd)
+					continue
+				}
+
+				key := cmd.Args[0]
+				err := h.db.Delete(key)
+
+				if err != nil {
+					log.Printf("Failed to delete key: %v", err)
+				}
+				fmt.Fprintf(conn, "+OK\r\n")
+
 			default:
 				log.Printf("Unsupported command: %s", cmd.Op)
 			}

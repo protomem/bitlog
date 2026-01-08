@@ -15,6 +15,7 @@ type Operation int
 const (
 	OpGet Operation = iota
 	OpSet
+	OpDel
 )
 
 func (op Operation) String() string {
@@ -23,6 +24,8 @@ func (op Operation) String() string {
 		return "GET"
 	case OpSet:
 		return "SET"
+	case OpDel:
+		return "DEL"
 	default:
 		return "UNKNOWN"
 	}
@@ -70,10 +73,12 @@ func CommandFromReader(src io.Reader) (*Command, error) {
 	rawOp := scanner.Text()
 
 	switch rawOp {
-	case "GET":
+	case OpGet.String():
 		op = OpGet
-	case "SET":
+	case OpSet.String():
 		op = OpSet
+	case OpDel.String():
+		op = OpDel
 	default:
 		return nil, ErrInvalidOperation
 	}
