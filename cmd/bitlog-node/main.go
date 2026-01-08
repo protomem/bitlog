@@ -25,15 +25,18 @@ const (
 
 var (
 	_listenAddr = flag.String("addr", ":3957", "Listen address")
+	_dbPath     = flag.String("db", "tmp/bitlog.db", "Database path")
 )
 
 func main() {
 	flag.Parse()
 	log.SetPrefix(fmt.Sprintf("[%s] ", _appName))
 
-	db, err := database.New()
+	db, err := database.New(
+		database.WithRootPath(*_dbPath),
+	)
 	if err != nil {
-		log.Panicf("Failed to connect to database: %v", err)
+		log.Panicf("Failed to initialize database: %v", err)
 	}
 	handler := NewHandler(db)
 
@@ -90,6 +93,12 @@ func main() {
 	shutdownGroup.Go(func() {
 		if err := listener.Close(); err != nil {
 			log.Printf("Failed close listener: %v", err)
+		}
+	})
+
+	shutdownGroup.Go(func() {
+		if err := db.Close(); err != nil {
+			log.Printf("Failed close database: %v", err)
 		}
 	})
 
