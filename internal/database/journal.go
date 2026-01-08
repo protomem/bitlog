@@ -29,10 +29,11 @@ type Reference struct {
 type Journal struct {
 	mu      sync.RWMutex
 	records []Record
+	wal     *WriteAheadLog
 }
 
-func NewJournal() *Journal {
-	return &Journal{}
+func NewJournal(wal *WriteAheadLog) *Journal {
+	return &Journal{wal: wal}
 }
 
 func (jrnl *Journal) Find(ref Reference) (Record, bool, error) {
@@ -59,4 +60,11 @@ func (jrnl *Journal) Write(record Record) (Reference, error) {
 	address := int64(len(jrnl.records) - 1)
 
 	return Reference{Address: address}, nil
+}
+
+func (jrnl *Journal) Flush() error {
+	jrnl.mu.Lock()
+	defer jrnl.mu.Unlock()
+
+	return nil
 }

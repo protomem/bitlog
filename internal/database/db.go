@@ -21,10 +21,12 @@ func New(opts ...Option) (*DB, error) {
 		return nil, err
 	}
 
+	wal := NewWriteAheadLog(nil, nil)
+
 	db := &DB{
 		opts: appliedOpts,
 		idx:  NewIndex(),
-		jrnl: NewJournal(),
+		jrnl: NewJournal(wal),
 	}
 
 	return db, nil
