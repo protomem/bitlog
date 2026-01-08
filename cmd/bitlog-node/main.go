@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -16,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/protomem/bitlog/internal/redisproto"
+	"github.com/protomem/bitlog/internal/database"
 )
 
 const (
@@ -32,6 +30,12 @@ var (
 func main() {
 	flag.Parse()
 	log.SetPrefix(fmt.Sprintf("[%s] ", _appName))
+
+	db, err := database.New()
+	if err != nil {
+		log.Panicf("Failed to connect to database: %v", err)
+	}
+	handler := NewHandler(db)
 
 	listener, err := net.Listen("tcp", *_listenAddr)
 	if err != nil {
@@ -64,7 +68,7 @@ func main() {
 			}
 
 			runnerGroup.Go(func() {
-				handleConnection(conn)
+				handler.Handle(conn)
 			})
 		}
 	})
@@ -106,27 +110,6 @@ func main() {
 		log.Printf("Shutdown signal received")
 	case <-shutdownDone:
 		log.Printf("Shutdown completed")
-	}
-}
-
-func handleConnection(conn net.Conn) {
-	log.Printf("Accepted connection from %s", conn.RemoteAddr())
-	defer conn.Close()
-
-	for {
-		reader := bufio.NewReader(conn)
-		scanner := bufio.NewScanner(reader)
-
-		for scanner.Scan() {
-			buf := bytes.NewBuffer(scanner.Bytes())
-			cmd, err := redisproto.CommandFromReader(buf)
-			if err != nil {
-				log.Printf("Failed to parse command: %v", err)
-				continue
-			}
-
-			log.Printf("Received command: %s", cmd)
-		}
 	}
 }
 
