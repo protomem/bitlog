@@ -6,15 +6,14 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"os/signal"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/protomem/bitlog/internal/database"
+	"github.com/protomem/bitlog/internal/network"
 )
 
 const (
@@ -32,49 +31,23 @@ func main() {
 	flag.Parse()
 	log.SetPrefix(fmt.Sprintf("[%s] ", _appName))
 
-	db, err := database.New(
-		database.WithRootPath(*_dbPath),
-	)
+	db, err := database.New(database.WithRootPath(*_dbPath))
 	if err != nil {
 		log.Panicf("Failed to initialize database: %v", err)
 	}
+
 	handler := NewHandler(db)
 
-	listener, err := net.Listen("tcp", *_listenAddr)
-	if err != nil {
-		log.Panicf("Failed to listen on %s: %v", *_listenAddr, err)
-	}
+	srv := network.NewTcpServer()
+	srv.SetHandler(handler)
 
-	var (
-		runnerGroup sync.WaitGroup
-		isRunning   atomic.Bool
-	)
+	go func() {
+		log.Printf("Starting server on %s ...", *_listenAddr)
 
-	runnerGroup.Go(func() {
-		isRunning.Store(true)
-		defer func() {
-			isRunning.CompareAndSwap(true, false)
-			log.Printf("Stop listening")
-		}()
-
-		log.Printf("Listening on %s ...", *_listenAddr)
-
-		for isRunning.Load() {
-			conn, err := listener.Accept()
-			if err != nil {
-				if errors.Is(err, net.ErrClosed) {
-					break
-				}
-
-				log.Printf("Failed to accept connection: %v", err)
-				continue
-			}
-
-			runnerGroup.Go(func() {
-				handler.Handle(conn)
-			})
+		if err := srv.ListenAndServe(*_listenAddr); err != nil && !errors.Is(err, network.ErrServerClosed) {
+			log.Panicf("Failed to start server: %v", err)
 		}
-	})
+	}()
 
 	<-waitSysExit()
 
@@ -86,12 +59,7 @@ func main() {
 	var shutdownGroup sync.WaitGroup
 
 	shutdownGroup.Go(func() {
-		isRunning.Store(false)
-		log.Printf("Runner group send shutdown signal")
-	})
-
-	shutdownGroup.Go(func() {
-		if err := listener.Close(); err != nil {
+		if err := srv.Shutdown(ctxShutdown); err != nil {
 			log.Printf("Failed close listener: %v", err)
 		}
 	})
@@ -106,9 +74,6 @@ func main() {
 	go func() {
 		shutdownGroup.Wait()
 		log.Printf("Shutdown operations done")
-
-		runnerGroup.Wait()
-		log.Printf("Runner group done")
 
 		shutdownDone <- struct{}{}
 		close(shutdownDone)

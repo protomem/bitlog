@@ -5,9 +5,9 @@ import (
 	"bytes"
 	"fmt"
 	"log"
-	"net"
 
 	"github.com/protomem/bitlog/internal/database"
+	"github.com/protomem/bitlog/internal/network"
 	"github.com/protomem/bitlog/internal/redisproto"
 )
 
@@ -21,11 +21,14 @@ func NewHandler(db *database.DB) *Handler {
 	}
 }
 
-func (h *Handler) Handle(conn net.Conn) {
+func (h *Handler) ServeTcp(conn network.TcpConn) {
 	log.Printf("Accepted connection from %s", conn.RemoteAddr())
-	defer conn.Close()
+	defer func() {
+		conn.Close()
+		log.Printf("Closed connection from %s", conn.RemoteAddr())
+	}()
 
-	for {
+	for !conn.IsClosed() {
 		reader := bufio.NewReader(conn)
 		scanner := bufio.NewScanner(reader)
 
@@ -53,6 +56,7 @@ func (h *Handler) Handle(conn net.Conn) {
 				if err != nil {
 					log.Printf("Failed to set key: %v", err)
 				}
+
 			case redisproto.OpGet:
 				if len(cmd.Args) != 1 {
 					log.Printf("Invalid GET command: %s", cmd)
