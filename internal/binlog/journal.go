@@ -197,7 +197,7 @@ func (j *Journal) Write(log KeyValueLog) (LogID, error) {
 
 	j.headOff += int64(written)
 
-	return LogID{Offset: curOff, Size: len(data)}, nil
+	return LogID{Offset: curOff, Size: written}, nil
 }
 
 func (j *Journal) Read(lid LogID) (KeyValueLog, error) {
