@@ -64,7 +64,7 @@ func (l KeyValueLog) Encode() []byte {
 	)
 
 	off += l.encodeHeaderTo(data)
-	l.encodeBodyTo(data[off:])
+	l.encodeBodyTo(bincode.SliceByOffset(data, off))
 
 	return data
 }
@@ -76,7 +76,7 @@ func (l KeyValueLog) EncodeUnsign() []byte {
 	)
 
 	off += l.encodeHeaderUnsignTo(data)
-	l.encodeBodyTo(data[off:])
+	l.encodeBodyTo(bincode.SliceByOffset(data, off))
 
 	return data
 }
