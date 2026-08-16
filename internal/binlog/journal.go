@@ -165,8 +165,8 @@ type Driver interface {
 type Journal struct {
 	driver Driver
 
-	headMu  sync.Mutex
-	headOff int64
+	writeLock sync.Mutex
+	headOff   int64
 }
 
 func NewJournal(driver Driver) *Journal {
@@ -180,17 +180,22 @@ func NewJournal(driver Driver) *Journal {
 }
 
 func (j *Journal) Write(log KeyValueLog) (LogID, error) {
+	j.writeLock.Lock()
+	defer j.writeLock.Unlock()
+
 	log.Sign()
 
 	var (
 		data   = log.Encode()
-		curOff = j.nextWriteOffset(len(data))
+		curOff = j.headOff
 	)
 
-	_, err := j.driver.WriteAt(data, curOff)
+	written, err := j.driver.WriteAt(data, curOff)
 	if err != nil {
 		return LogID{}, werrors.Error(err, _journalErrorMsg, "write")
 	}
+
+	j.headOff += int64(written)
 
 	return LogID{Offset: curOff, Size: len(data)}, nil
 }
@@ -213,14 +218,4 @@ func (j *Journal) Read(lid LogID) (KeyValueLog, error) {
 	}
 
 	return log, nil
-}
-
-func (j *Journal) nextWriteOffset(delta int) (prevOff int64) {
-	j.headMu.Lock()
-	defer j.headMu.Unlock()
-
-	prevOff = j.headOff
-	j.headOff += int64(delta)
-
-	return
 }
