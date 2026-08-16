@@ -129,6 +129,10 @@ func (l *KeyValueLog) Decode(data []byte) error {
 	off += 4
 
 	// Decode body
+	if len(data) < off+int(keySize)+int(valueSize) {
+		return ErrSmallData
+	}
+
 	l.Key = make([]byte, keySize)
 	l.Value = make([]byte, valueSize)
 
