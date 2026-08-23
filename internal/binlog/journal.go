@@ -20,18 +20,23 @@ type Driver interface {
 
 type Journal[L Log] struct {
 	driver Driver
+	newLog func() L
 
 	writeLock sync.Mutex
 	headOff   int64
 }
 
-func NewJournal[L Log](driver Driver) *Journal[L] {
+func NewJournal[L Log](driver Driver, newLog func() L) *Journal[L] {
 	if driver == nil {
 		werrors.PanicMessage(_journalErrorMsg, "driver is nil")
+	}
+	if newLog == nil {
+		werrors.PanicMessage(_journalErrorMsg, "newLog is nil")
 	}
 
 	return &Journal[L]{
 		driver: driver,
+		newLog: newLog,
 	}
 }
 
@@ -42,7 +47,7 @@ func (j *Journal[L]) Write(log L) (LogID, error) {
 	log.Sign()
 
 	lastOff := j.headOff
-	rawBuf := make([]byte, log.Size())
+	rawBuf := make([]byte, 0, log.Size())
 
 	buf := bytes.NewBuffer(rawBuf)
 	if _, err := log.Encode(buf); err != nil {
@@ -60,9 +65,9 @@ func (j *Journal[L]) Write(log L) (LogID, error) {
 }
 
 func (j *Journal[L]) Read(lid LogID) (L, error) {
-	var log L
-	rawBuf := make([]byte, lid.Size)
+	log := j.newLog()
 
+	rawBuf := make([]byte, lid.Size)
 	if _, err := j.driver.ReadAt(rawBuf, lid.Offset); err != nil {
 		return log, werrors.Error(err, _journalErrorMsg, "read")
 	}

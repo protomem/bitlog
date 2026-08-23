@@ -28,6 +28,10 @@ type Log interface {
 	Decode(src io.Reader) (read int, err error)
 }
 
+func NewKeyValueJournal(driver Driver) *Journal[*KeyValueLog] {
+	return NewJournal(driver, NewEmptyKeyValueLog)
+}
+
 type KeyValueLog struct {
 	Signature uint64 // CRC 64
 
@@ -38,8 +42,12 @@ type KeyValueLog struct {
 	Value []byte
 }
 
-func NewKeyValueLog(tstamp int64, key, value []byte) KeyValueLog {
-	return KeyValueLog{
+func NewEmptyKeyValueLog() *KeyValueLog {
+	return &KeyValueLog{}
+}
+
+func NewKeyValueLog(tstamp int64, key, value []byte) *KeyValueLog {
+	return &KeyValueLog{
 		Timestamp: tstamp,
 		Key:       key,
 		Value:     value,
