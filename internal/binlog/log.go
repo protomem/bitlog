@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"hash/crc32"
+	"hash/crc64"
 	"io"
 
 	"github.com/protomem/bitlog/internal/bin"
@@ -45,16 +47,29 @@ func NewKeyValueLog(tstamp int64, key, value []byte) KeyValueLog {
 }
 
 func (l *KeyValueLog) Sign() {
+	l.Signature = l.GenSign()
 }
 
 func (l *KeyValueLog) Verify() bool {
-	// TODO
-	return true
+	return l.Signature == l.GenSign()
 }
 
 func (l *KeyValueLog) GenSign() uint64 {
-	// TODO
-	return 0
+	keySign := crc32.Checksum(l.Key, crc32.IEEETable)
+	valueSign := crc32.Checksum(l.Value, crc32.IEEETable)
+
+	metaSize := l.sizeMeta() + bin.SizeOfValue(keySign) + bin.SizeOfValue(valueSign)
+	metaData := make([]byte, 0, metaSize)
+
+	metaData = bin.Append(binary.LittleEndian, metaData, uint64(l.Timestamp))
+	metaData = bin.Append(binary.LittleEndian, metaData, uint64(l.Flags))
+	metaData = bin.Append(binary.LittleEndian, metaData, uint32(len(l.Key)))
+	metaData = bin.Append(binary.LittleEndian, metaData, uint32(len(l.Value)))
+
+	metaData = bin.Append(binary.LittleEndian, metaData, keySign)
+	metaData = bin.Append(binary.LittleEndian, metaData, valueSign)
+
+	return crc64.Checksum(metaData, crc64.MakeTable(crc64.ECMA))
 }
 
 func (l *KeyValueLog) Encode(dest io.Writer) (written int, err error) {
@@ -131,8 +146,11 @@ func (l *KeyValueLog) Size() int {
 }
 
 func (l *KeyValueLog) sizeHead() int {
-	return bin.SizeOfValue(l.Signature) +
-		bin.SizeOfValue(l.Timestamp) + bin.SizeOfValue(l.Flags) +
+	return bin.SizeOfValue(l.Signature) + l.sizeMeta()
+}
+
+func (l *KeyValueLog) sizeMeta() int {
+	return bin.SizeOfValue(l.Timestamp) + bin.SizeOfValue(l.Flags) +
 		bin.SizeOfValue(uint32(len(l.Key))) + bin.SizeOfValue(uint32(len(l.Value)))
 }
 

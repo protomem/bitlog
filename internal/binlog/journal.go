@@ -69,7 +69,7 @@ func (j *Journal[L]) Read(lid LogID) (L, error) {
 
 	buf := bytes.NewBuffer(rawBuf)
 	if _, err := log.Decode(buf); err != nil {
-		return log, werrors.Error(err, _journalErrorMsg, "read", "decode")
+		return log, werrors.Error(err, _journalErrorMsg, "read", "log decode")
 	}
 
 	if !log.Verify() {

@@ -26,3 +26,24 @@ func TestKeyValueLog_Encoding(t *testing.T) {
 		t.Fatalf("logs not equals, originLog=%+v, decodeLog=%+v", originLog, decodedLog)
 	}
 }
+
+func TestKeyValueLog_Verification(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		log := binlog.NewKeyValueLog(1_000_000, []byte("key"), []byte("value"))
+		log.Sign()
+
+		if !log.Verify() {
+			t.Fatal("log must be verified after sign")
+		}
+	})
+
+	t.Run("Unverify", func(t *testing.T) {
+		log := binlog.NewKeyValueLog(1_000_000, []byte("key"), []byte("value"))
+		log.Sign()
+
+		log.Value[0] ^= 0xFF
+		if log.Verify() {
+			t.Fatal("log must not be verified after data mutation")
+		}
+	})
+}
