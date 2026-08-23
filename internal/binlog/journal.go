@@ -51,7 +51,7 @@ func (j *Journal[L]) Write(log L) (LogID, error) {
 
 	buf := bytes.NewBuffer(rawBuf)
 	if _, err := log.Encode(buf); err != nil {
-		return LogID{}, werrors.Error(err, _journalErrorMsg, "write", "log decode")
+		return LogID{}, werrors.Error(err, _journalErrorMsg, "write", "log encode")
 	}
 
 	written, err := j.driver.WriteAt(buf.Bytes(), lastOff)
