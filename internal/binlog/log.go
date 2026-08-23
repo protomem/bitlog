@@ -4,19 +4,26 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"hash/crc64"
+	"io"
 
-	"github.com/protomem/bitlog/internal/bincode"
+	"github.com/protomem/bitlog/internal/bin"
 )
 
-var (
-	ErrInvalidLog = errors.New("invalid log")
-	ErrSmallData  = errors.New("small data")
-)
+var ErrUnexpectedSize = errors.New("unexpected size data")
 
 type LogID struct {
 	Offset int64
 	Size   int
+}
+
+type Log interface {
+	Sign()
+	Verify() bool
+
+	Size() int
+
+	Encode(dest io.Writer) (written int, err error)
+	Decode(src io.Reader) (read int, err error)
 }
 
 type KeyValueLog struct {
@@ -37,140 +44,111 @@ func NewKeyValueLog(tstamp int64, key, value []byte) KeyValueLog {
 	}
 }
 
-func (l KeyValueLog) GenSign() uint64 {
-	data := l.EncodeUnsign()
-	sign := crc64.Checksum(data, crc64.MakeTable(crc64.ECMA))
-
-	return sign
-}
-
 func (l *KeyValueLog) Sign() {
-	l.Signature = l.GenSign()
 }
 
-func (l KeyValueLog) Verify() bool {
-	return l.Signature == l.GenSign()
+func (l *KeyValueLog) Verify() bool {
+	// TODO
+	return true
 }
 
-func (l KeyValueLog) Encode() []byte {
-	var (
-		off  int
-		data = make([]byte, l.encodeHeaderTo(nil)+l.encodeBodyTo(nil))
-	)
-
-	off += l.encodeHeaderTo(data)
-	l.encodeBodyTo(bincode.SliceByOffset(data, off))
-
-	return data
+func (l *KeyValueLog) GenSign() uint64 {
+	// TODO
+	return 0
 }
 
-func (l KeyValueLog) EncodeUnsign() []byte {
-	var (
-		off  int
-		data = make([]byte, l.encodeHeaderUnsignTo(nil)+l.encodeBodyTo(nil))
-	)
+func (l *KeyValueLog) Encode(dest io.Writer) (written int, err error) {
+	headData := make([]byte, 0, l.sizeHead())
 
-	off += l.encodeHeaderUnsignTo(data)
-	l.encodeBodyTo(bincode.SliceByOffset(data, off))
+	headData = bin.Append(binary.LittleEndian, headData, l.Signature)
+	headData = bin.Append(binary.LittleEndian, headData, uint64(l.Timestamp))
+	headData = bin.Append(binary.LittleEndian, headData, l.Flags)
 
-	return data
-}
+	headData = bin.Append(binary.LittleEndian, headData, uint32(len(l.Key)))
+	headData = bin.Append(binary.LittleEndian, headData, uint32(len(l.Value)))
 
-func (l *KeyValueLog) Decode(data []byte) error {
-	headOff := l.decodeHeaderFrom(data)
-	if headOff == 0 {
-		return ErrSmallData
+	writeHead, err := dest.Write(headData)
+	written += writeHead
+	if err != nil {
+		return
 	}
 
-	bodyOff := l.decodeBodyFrom(bincode.SliceByOffset(data, headOff))
-	if bodyOff == 0 {
-		return ErrSmallData
+	writeKey, err := dest.Write(l.Key)
+	written += writeKey
+	if err != nil {
+		return
 	}
 
-	return nil
+	writeValue, err := dest.Write(l.Value)
+	written += writeValue
+
+	return
 }
 
-func (l KeyValueLog) Equals(other KeyValueLog) bool {
-	return l.Signature == other.Signature &&
-		l.Timestamp == other.Timestamp && l.Flags == other.Flags &&
-		bytes.Equal(l.Key, other.Key) && bytes.Equal(l.Value, other.Value)
-}
+func (l *KeyValueLog) Decode(src io.Reader) (read int, err error) {
+	headData := make([]byte, l.sizeHead())
 
-func (l KeyValueLog) Clone() KeyValueLog {
-	newLog := l
-
-	newLog.Key = bytes.Clone(l.Key)
-	newLog.Value = bytes.Clone(l.Value)
-
-	return newLog
-}
-
-func (l KeyValueLog) encodeHeaderTo(dest []byte) (off int) {
-	off += bincode.Put(binary.LittleEndian, dest, l.Signature)
-	off += l.encodeHeaderUnsignTo(bincode.SliceByOffset(dest, off))
-
-	return off
-}
-
-func (l *KeyValueLog) decodeHeaderFrom(src []byte) (off int) {
-	if len(src) < l.encodeHeaderTo(nil) {
-		return 0
+	readHead, err := src.Read(headData)
+	read += readHead
+	if err != nil {
+		return
+	}
+	if readHead < len(headData) {
+		return read, ErrUnexpectedSize
 	}
 
-	off += bincode.Value(binary.LittleEndian, bincode.SliceByOffset(src, off), &l.Signature)
-	off += l.decodeHeaderUnsignFrom(bincode.SliceByOffset(src, off))
+	var headOff int
 
-	return off
-}
+	headOff += bin.ValueTo(binary.LittleEndian, headData[headOff:], &l.Signature)
 
-func (l KeyValueLog) encodeHeaderUnsignTo(dest []byte) (off int) {
-	off += bincode.Put(binary.LittleEndian, bincode.SliceByOffset(dest, off), uint64(l.Timestamp))
-	off += bincode.Put(binary.LittleEndian, bincode.SliceByOffset(dest, off), l.Flags)
-	off += bincode.Put(binary.LittleEndian, bincode.SliceByOffset(dest, off), uint32(len(l.Key)))
-	off += bincode.Put(binary.LittleEndian, bincode.SliceByOffset(dest, off), uint32(len(l.Value)))
+	var tstamp uint64
+	headOff += bin.ValueTo(binary.LittleEndian, headData[headOff:], &tstamp)
+	l.Timestamp = int64(tstamp)
 
-	return off
-}
-
-func (l *KeyValueLog) decodeHeaderUnsignFrom(src []byte) (off int) {
-	if len(src) < l.encodeHeaderUnsignTo(nil) {
-		return 0
-	}
-
-	var ts uint64
-	off += bincode.Value(binary.LittleEndian, bincode.SliceByOffset(src, off), &ts)
-	l.Timestamp = int64(ts)
-
-	off += bincode.Value(binary.LittleEndian, bincode.SliceByOffset(src, off), &l.Flags)
+	headOff += bin.ValueTo(binary.LittleEndian, headData[headOff:], &l.Flags)
 
 	var keySize, valueSize uint32
-	off += bincode.Value(binary.LittleEndian, bincode.SliceByOffset(src, off), &keySize)
-	off += bincode.Value(binary.LittleEndian, bincode.SliceByOffset(src, off), &valueSize)
+	headOff += bin.ValueTo(binary.LittleEndian, headData[headOff:], &keySize)
+	headOff += bin.ValueTo(binary.LittleEndian, headData[headOff:], &valueSize)
 
 	l.Key = make([]byte, keySize)
 	l.Value = make([]byte, valueSize)
 
-	return off
-}
-
-func (l KeyValueLog) encodeBodyTo(data []byte) (off int) {
-	if data == nil {
-		return len(l.Key) + len(l.Value)
+	readKey, err := src.Read(l.Key)
+	read += readKey
+	if err != nil {
+		return
 	}
 
-	off += copy(data[off:], l.Key)
-	off += copy(data[off:], l.Value)
+	readValue, err := src.Read(l.Value)
+	read += readValue
 
-	return off
+	return
 }
 
-func (l *KeyValueLog) decodeBodyFrom(src []byte) (off int) {
-	if len(src) < len(l.Key)+len(l.Value) {
-		return 0
+func (l *KeyValueLog) Size() int {
+	return l.sizeHead() + l.sizeBody()
+}
+
+func (l *KeyValueLog) sizeHead() int {
+	return bin.SizeOfValue(l.Signature) +
+		bin.SizeOfValue(l.Timestamp) + bin.SizeOfValue(l.Flags) +
+		bin.SizeOfValue(uint32(len(l.Key))) + bin.SizeOfValue(uint32(len(l.Value)))
+}
+
+func (l *KeyValueLog) sizeBody() int {
+	return len(l.Key) + len(l.Value)
+}
+
+func (l *KeyValueLog) Equals(other *KeyValueLog) bool {
+	if l == other {
+		return true
+	}
+	if other == nil {
+		return false
 	}
 
-	off += copy(l.Key, src[off:])
-	off += copy(l.Value, src[off:])
-
-	return off
+	return l.Signature == other.Signature &&
+		l.Timestamp == other.Timestamp && l.Flags == other.Flags &&
+		bytes.Equal(l.Key, other.Key) && bytes.Equal(l.Value, other.Value)
 }
