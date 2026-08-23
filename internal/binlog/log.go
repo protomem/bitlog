@@ -7,6 +7,7 @@ import (
 	"hash/crc32"
 	"hash/crc64"
 	"io"
+	"time"
 
 	"github.com/protomem/bitlog/internal/bin"
 )
@@ -28,21 +29,25 @@ type Log interface {
 	Decode(src io.Reader) (read int, err error)
 }
 
-func NewKeyValueJournal(driver Driver) *Journal[*KeyValueLog] {
-	return NewJournal(driver, NewEmptyKeyValueLog)
+type KeyValueJournal = Journal[*KeyValueLog]
+
+func NewKeyValueJournal(driver Driver) *KeyValueJournal {
+	return NewJournal(driver, EmptyKeyValueLog)
 }
 
 type KeyValueLog struct {
 	Signature uint64 // CRC 64
 
-	Timestamp int64  // UNIX Timestamp
-	Flags     uint64 // Bitset
+	Timestamp int64 // UNIX Timestamp
+
+	// Bitset
+	Flags uint64
 
 	Key   []byte
 	Value []byte
 }
 
-func NewEmptyKeyValueLog() *KeyValueLog {
+func EmptyKeyValueLog() *KeyValueLog {
 	return &KeyValueLog{}
 }
 
@@ -52,6 +57,19 @@ func NewKeyValueLog(tstamp int64, key, value []byte) *KeyValueLog {
 		Key:       key,
 		Value:     value,
 	}
+}
+
+func NowKeyValueLog(key, value []byte) *KeyValueLog {
+	return NewKeyValueLog(time.Now().UnixMilli(), key, value)
+}
+
+func TombstoneKeyValueLog(key []byte) *KeyValueLog {
+	return NowKeyValueLog(key, nil)
+}
+
+func (l *KeyValueLog) WithDeleted() *KeyValueLog {
+	l.Flags |= 1 << 0
+	return l
 }
 
 func (l *KeyValueLog) Sign() {
