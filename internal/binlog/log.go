@@ -9,7 +9,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/protomem/bitlog/internal/bin"
+	"github.com/protomem/bitlog/pkg/bin"
 )
 
 var ErrUnexpectedSize = errors.New("unexpected size data")
