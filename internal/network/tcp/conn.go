@@ -24,6 +24,7 @@ type serverConn struct {
 }
 
 func (c *serverConn) Serve() {
+	defer c.Close()
 	c.Server.Handler.ServeTCP(c)
 }
 

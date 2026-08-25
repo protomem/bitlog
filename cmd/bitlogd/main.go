@@ -2,16 +2,32 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"log"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/protomem/bitlog/internal/network/tcp"
+	"github.com/protomem/bitlog/pkg/werrors"
+
+	"golang.org/x/sync/errgroup"
 )
 
-const _newLine = "\r\n"
+const (
+	_newLine = "\r\n"
+
+	_shutdownTimeout = 15 * time.Second
+)
+
+var errInterruptedBySignal = errors.New("process interrupted by signal")
 
 func main() {
+	group, groupCtx := errgroup.WithContext(context.Background())
+
 	echoSrv := tcp.Server{
 		ListenAddr: ":7743",
 		Handler: tcp.HandlerFunc(func(conn tcp.Conn) {
@@ -30,9 +46,7 @@ func main() {
 				log.Printf("received message %q", msg)
 
 				if strings.EqualFold(msg, "close") {
-					if err := conn.Close(); err != nil {
-						log.Printf("failed close conn with error=%s", err)
-					}
+					return
 				}
 
 				writer.Write([]byte(strings.ToUpper(msg)))
@@ -49,9 +63,46 @@ func main() {
 		}),
 	}
 
-	if err := echoSrv.ListenAndServe(); err != nil {
-		log.Printf("failed start tcp server with error=%s", err)
-	} else {
-		log.Printf("closed server")
+	group.Go(func() error {
+		if err := echoSrv.ListenAndServe(); err != nil {
+			return werrors.Error(err, "echoServer", "listenAndServe")
+		}
+		return nil
+	})
+
+	group.Go(func() error {
+		<-groupCtx.Done()
+		log.Printf("shutdown initiated, stopping server ...")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), _shutdownTimeout)
+		defer cancel()
+
+		if err := echoSrv.Shutdown(shutdownCtx); err != nil {
+			return werrors.Error(err, "echoServer", "shutdown")
+		}
+
+		return nil
+	})
+
+	group.Go(func() error {
+		exitSig := []os.Signal{syscall.SIGTERM, syscall.SIGINT}
+		waitExitCh := make(chan os.Signal, len(exitSig))
+		signal.Notify(waitExitCh, exitSig...)
+
+		select {
+		case <-waitExitCh:
+			return errInterruptedBySignal
+		case <-groupCtx.Done():
+			return nil
+		}
+	})
+
+	if err := group.Wait(); err != nil {
+		if errors.Is(err, errInterruptedBySignal) {
+			log.Printf("shutting down")
+		} else {
+			log.Printf("terminating wity error=%s", err)
+		}
 	}
+
 }
