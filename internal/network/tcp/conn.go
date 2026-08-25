@@ -1,6 +1,10 @@
 package tcp
 
-import "io"
+import (
+	"io"
+	"net"
+	"sync"
+)
 
 type Conn interface {
 	io.Reader
@@ -9,10 +13,25 @@ type Conn interface {
 	io.Closer
 }
 
-type serverConn struct{}
+type serverConn struct {
+	net.Conn
+	Server *Server
 
-func (c *serverConn) Serve() {}
+	onceClose sync.Once
+	closeErr  error
+}
+
+func (c *serverConn) Serve() {
+	c.Server.Handler.ServeTCP(c)
+}
 
 func (c *serverConn) Close() error {
-	return nil
+	c.onceClose.Do(c.close)
+	c.Server.trackConn(c, false)
+
+	return c.closeErr
+}
+
+func (c *serverConn) close() {
+	c.closeErr = c.Conn.Close()
 }

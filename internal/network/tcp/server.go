@@ -21,11 +21,18 @@ const (
 var ErrServerClosed = errors.New("server closed")
 
 type Handler interface {
-	ServeTCP(conn Conn) error
+	ServeTCP(conn Conn)
+}
+
+type HandlerFunc func(conn Conn)
+
+func (fn HandlerFunc) ServeTCP(conn Conn) {
+	fn(conn)
 }
 
 type Server struct {
-	Handler Handler
+	ListenAddr string
+	Handler    Handler
 
 	inShutdown atomic.Bool
 
@@ -36,8 +43,8 @@ type Server struct {
 	listenerGroup sync.WaitGroup
 }
 
-func (s *Server) ListenAndServe(addr string) error {
-	rawListener, err := net.Listen("tcp", addr)
+func (s *Server) ListenAndServe() error {
+	rawListener, err := net.Listen("tcp", s.ListenAddr)
 	if err != nil {
 		return werrors.Error(err, _serverErrorMsg, "listen")
 	}
@@ -78,7 +85,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 	for {
 		if s.closeIdleConns() {
-			return lnerr
+			return werrors.Error(lnerr, _serverErrorMsg, "shutdown")
 		}
 
 		select {
@@ -96,16 +103,18 @@ func (s *Server) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	err := s.closeListenersLocked()
+
 	s.mu.Unlock()
 	s.listenerGroup.Wait()
 	s.mu.Lock()
 
-	for c := range s.activeConn {
-		c.Close()
-		delete(s.activeConn, c)
+	for conn := range s.activeConn {
+		conn.Close()
+		delete(s.activeConn, conn)
 	}
 
-	return nil
+	return werrors.Error(err, _serverErrorMsg, "close")
 }
 
 func (s *Server) trackListener(ln *net.Listener, add bool) bool {
@@ -146,9 +155,26 @@ func (s *Server) closeIdleConns() bool {
 	return true
 }
 
-func (s *Server) registerConn(_ net.Conn) *serverConn {
-	// TODO
-	return nil
+func (s *Server) registerConn(rawConn net.Conn) *serverConn {
+	conn := &serverConn{Server: s, Conn: rawConn}
+	s.trackConn(conn, true)
+
+	return conn
+}
+
+func (s *Server) trackConn(conn *serverConn, add bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.activeConn == nil {
+		s.activeConn = make(map[*serverConn]struct{})
+	}
+
+	if add {
+		s.activeConn[conn] = struct{}{}
+	} else {
+		delete(s.activeConn, conn)
+	}
 }
 
 func (s *Server) shuttingDown() bool {
