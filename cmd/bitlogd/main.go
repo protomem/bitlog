@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"log"
 	"strings"
 
@@ -28,6 +29,12 @@ func main() {
 				msg := scanner.Text()
 				log.Printf("received message %q", msg)
 
+				if strings.EqualFold(msg, "close") {
+					if err := conn.Close(); err != nil {
+						log.Printf("failed close conn with error=%s", err)
+					}
+				}
+
 				writer.Write([]byte(strings.ToUpper(msg)))
 				writer.Write([]byte(_newLine))
 
@@ -36,6 +43,9 @@ func main() {
 				}
 			}
 
+			if err := scanner.Err(); err != nil && !errors.Is(err, tcp.ErrConnClosed) {
+				log.Printf("scann failed with error=%s", err)
+			}
 		}),
 	}
 

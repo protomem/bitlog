@@ -6,6 +6,8 @@ import (
 	"sync"
 )
 
+var ErrConnClosed = net.ErrClosed
+
 type Conn interface {
 	io.Reader
 	io.Writer
@@ -23,6 +25,16 @@ type serverConn struct {
 
 func (c *serverConn) Serve() {
 	c.Server.Handler.ServeTCP(c)
+}
+
+func (c *serverConn) Read(b []byte) (int, error) {
+	read, err := c.Conn.Read(b)
+	return read, err
+}
+
+func (c *serverConn) Write(b []byte) (int, error) {
+	written, err := c.Conn.Write(b)
+	return written, err
 }
 
 func (c *serverConn) Close() error {

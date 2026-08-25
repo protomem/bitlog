@@ -109,10 +109,7 @@ func (s *Server) Close() error {
 	s.listenerGroup.Wait()
 	s.mu.Lock()
 
-	for conn := range s.activeConn {
-		conn.Close()
-		delete(s.activeConn, conn)
-	}
+	s.closeIdleConns()
 
 	return werrors.Error(err, _serverErrorMsg, "close")
 }
@@ -151,7 +148,11 @@ func (s *Server) closeListenersLocked() error {
 }
 
 func (s *Server) closeIdleConns() bool {
-	// TODO
+	for conn := range s.activeConn {
+		conn.Close()
+		delete(s.activeConn, conn)
+	}
+
 	return true
 }
 
