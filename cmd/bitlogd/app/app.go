@@ -2,13 +2,14 @@ package app
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"log"
-	"strings"
 
 	"github.com/protomem/bitlog/internal/apprunner"
 	"github.com/protomem/bitlog/internal/network/tcp"
+	"github.com/protomem/bitlog/internal/protokey"
 	"github.com/protomem/bitlog/pkg/werrors"
 )
 
@@ -78,16 +79,24 @@ func (*App) handleServeTCP(conn tcp.Conn) {
 			return
 		}
 
-		msg := scanner.Text()
-		log.Printf("received message %q", msg)
+		buf := bytes.NewBuffer(scanner.Bytes())
 
-		if strings.EqualFold(msg, "close") {
-			return
+		cmd, args, err := protokey.Parse(buf)
+		if err != nil {
+			log.Printf("parse received message with error=%s", err)
 		}
 
-		writer.Write([]byte(strings.ToUpper(msg)))
-		writer.Write([]byte(_newLine))
+		log.Printf("parsed command %d with args %+v", cmd, args)
 
+		switch cmd {
+		default:
+			writer.WriteString("UNSUPORTED COMMAND")
+
+		case protokey.PING:
+			writer.WriteString("PONG")
+		}
+
+		writer.WriteString(_newLine)
 		if err := writer.Flush(); err != nil {
 			log.Printf("send message with error=%s", err)
 		}
