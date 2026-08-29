@@ -62,7 +62,7 @@ func (app *App) Run() {
 		case errors.Is(err, apprunner.ErrInterruptedBySignal):
 			log.Printf("shutting down")
 		default:
-			log.Printf("terminating wity error=%s", err)
+			log.Printf("terminating with error=%s", err)
 		}
 	}
 }
