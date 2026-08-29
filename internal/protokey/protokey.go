@@ -3,8 +3,15 @@ package protokey
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"io"
+
+	"github.com/protomem/bitlog/pkg/werrors"
 )
+
+const _pkgErrorMsg = "protokey"
+
+var ErrInsufficientArgs = errors.New("insufficient arguments error")
 
 type Command int
 
@@ -51,16 +58,43 @@ func Parse(src io.Reader) (Command, Args, error) {
 	return cmd, args, nil
 }
 
+func Validate(cmd Command, args Args) error {
+	switch cmd {
+	case UNKOWN:
+		fallthrough
+	default:
+		return nil
+
+	case GET:
+		if !checkArg(args, KeyKind) {
+			return werrors.Error(ErrInsufficientArgs, _pkgErrorMsg)
+		}
+
+		return nil
+
+	case SET:
+		if checkArg(args, KeyKind) {
+			return werrors.Error(ErrInsufficientArgs, _pkgErrorMsg)
+		}
+		if checkArg(args, ValueKind) {
+			return werrors.Error(ErrInsufficientArgs, _pkgErrorMsg)
+		}
+
+		return nil
+
+	case DEL:
+		if checkArg(args, KeyKind) {
+			return werrors.Error(ErrInsufficientArgs, _pkgErrorMsg)
+		}
+
+		return nil
+	}
+}
+
 func newTokenizer(r io.Reader) *bufio.Scanner {
 	scanner := bufio.NewScanner(r)
 	scanner.Split(bufio.ScanWords)
 	return scanner
-}
-
-func defaultArgs() Args {
-	return Args{
-		KeyKind: nil,
-	}
 }
 
 func selectCommand(token []byte) Command {
@@ -77,4 +111,15 @@ func selectCommand(token []byte) Command {
 	case "DEL":
 		return DEL
 	}
+}
+
+func defaultArgs() Args {
+	return Args{
+		KeyKind: nil,
+	}
+}
+
+func checkArg(args Args, kind ArgsKind) bool {
+	_, ok := args[kind]
+	return ok
 }

@@ -5,9 +5,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log"
 
 	"github.com/protomem/bitlog/internal/apprunner"
+	"github.com/protomem/bitlog/internal/binlog"
+	"github.com/protomem/bitlog/internal/buffer"
 	"github.com/protomem/bitlog/internal/network/tcp"
 	"github.com/protomem/bitlog/internal/protokey"
 	"github.com/protomem/bitlog/pkg/werrors"
@@ -18,12 +21,16 @@ const _newLine = "\r\n"
 type App struct {
 	cfg    Config
 	runner *apprunner.Runner
+	kvLog  *binlog.Facade
 }
 
 func New(cfg Config) *App {
+	preallocBuf := make([]byte, 0, cfg.PreallocMemorySize)
+
 	return &App{
 		cfg:    cfg,
 		runner: apprunner.New(),
+		kvLog:  binlog.NewFacade(buffer.NewDynamic(preallocBuf)),
 	}
 }
 
@@ -67,7 +74,7 @@ func (app *App) Run() {
 	}
 }
 
-func (*App) handleServeTCP(conn tcp.Conn) {
+func (app *App) handleServeTCP(conn tcp.Conn) {
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
 
@@ -83,7 +90,9 @@ func (*App) handleServeTCP(conn tcp.Conn) {
 
 		cmd, args, err := protokey.Parse(buf)
 		if err != nil {
+			fmt.Fprintf(writer, "INVALID COMMAND '%s'", err)
 			log.Printf("parse received message with error=%s", err)
+			goto FLUSH
 		}
 
 		log.Printf("parsed command %d with args %+v", cmd, args)
@@ -94,8 +103,41 @@ func (*App) handleServeTCP(conn tcp.Conn) {
 
 		case protokey.PING:
 			writer.WriteString("PONG")
+
+		case protokey.SET:
+			key := args[protokey.KeyKind]
+			value := args[protokey.ValueKind]
+
+			if err := app.kvLog.Set(key, value); err != nil {
+				fmt.Fprintf(writer, "INVALID EXEC COMMAND '%s'", err)
+			}
+
+			writer.WriteString("OK")
+
+		case protokey.GET:
+			key := args[protokey.KeyKind]
+
+			value, keyExists, err := app.kvLog.Get(key)
+			if err != nil {
+				fmt.Fprintf(writer, "INVALID EXEC COMMAND '%s'", err)
+			}
+			if !keyExists {
+				writer.WriteString("KEY NOT FOUND")
+			}
+
+			writer.Write(value)
+
+		case protokey.DEL:
+			key := args[protokey.KeyKind]
+
+			if err := app.kvLog.Delete(key); err != nil {
+				fmt.Fprintf(writer, "INVALID EXEC COMMAND '%s'", err)
+			}
+
+			writer.WriteString("OK")
 		}
 
+	FLUSH:
 		writer.WriteString(_newLine)
 		if err := writer.Flush(); err != nil {
 			log.Printf("send message with error=%s", err)
