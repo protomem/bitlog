@@ -56,7 +56,7 @@ func (app *App) Run() {
 		return nil
 	})
 
-	app.runner.ExitOnSystemSignal()
+	app.runner.StopOnSystemSignal()
 	if err := app.runner.WaitTerminating(); err != nil {
 		switch {
 		case errors.Is(err, apprunner.ErrInterruptedBySignal):

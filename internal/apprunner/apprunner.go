@@ -32,7 +32,7 @@ func (r *Runner) Run(runFn func(ctx context.Context) error) {
 	})
 }
 
-func (r *Runner) ExitOnSystemSignal() {
+func (r *Runner) StopOnSystemSignal() {
 	r.Run(func(ctx context.Context) error {
 		exitSig := []os.Signal{syscall.SIGTERM, syscall.SIGINT}
 		waitExitCh := make(chan os.Signal, len(exitSig))
