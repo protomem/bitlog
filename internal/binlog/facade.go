@@ -43,13 +43,12 @@ func (f *Facade) Delete(key []byte) error {
 	f.actualKeys.Remove(key)
 
 	log := TombstoneKeyValueLog(key)
-	lid, err := f.mainJournal.Write(log)
+	_, err := f.mainJournal.Write(log)
 	if err != nil {
 		return err
 	}
 
-	index := NewIndex(key, lid)
-	f.actualKeys.Insert(index)
+	f.actualKeys.Remove(key)
 
 	return nil
 }
