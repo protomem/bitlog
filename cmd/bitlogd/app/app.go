@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/protomem/bitlog/internal/apprunner"
 	"github.com/protomem/bitlog/internal/binlog"
@@ -36,6 +37,21 @@ func New(cfg Config) *App {
 
 func (app *App) Run() {
 	log.Printf("app run with config=%+v", app.cfg)
+
+	if rootPath := app.cfg.RootPath; rootPath != "" {
+		driver, err := os.OpenFile(rootPath, os.O_CREATE|os.O_RDWR, 0o600)
+		if err != nil {
+			log.Printf("failed open data file by error=%s", err)
+			return
+		}
+
+		app.kvLog = binlog.NewFacade(driver)
+	}
+
+	if err := app.kvLog.Recover(); err != nil {
+		log.Printf("failed recover key/values with error=%s", err)
+		return
+	}
 
 	mainServer := tcp.Server{
 		ListenAddr: app.cfg.ListenAddr,

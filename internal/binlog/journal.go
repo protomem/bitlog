@@ -2,6 +2,7 @@ package binlog
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"sync"
 
@@ -96,7 +97,10 @@ type JournalIterator[L Log] struct {
 	lpool  LogPool[L]
 
 	lock    sync.RWMutex
+	headOff int64
 	lastErr error
+
+	currLid LogID
 	currLog L
 }
 
@@ -111,18 +115,22 @@ func (i *JournalIterator[L]) Err() error {
 	i.lock.RLock()
 	defer i.lock.RUnlock()
 
+	if errors.Is(i.lastErr, io.EOF) {
+		return nil
+	}
+
 	return werrors.Error(i.lastErr, _journalErrorMsg, "iter")
 }
 
-func (i *JournalIterator[L]) Value() L {
+func (i *JournalIterator[L]) Value() (LogID, L) {
 	i.lock.RLock()
 	defer i.lock.RUnlock()
 
 	if i.lastErr != nil {
-		return ptr.Zero[L]()
+		return LogID{}, ptr.Zero[L]()
 	}
 
-	return i.currLog
+	return i.currLid, i.currLog
 }
 
 func (i *JournalIterator[L]) Next() bool {
@@ -138,10 +146,18 @@ func (i *JournalIterator[L]) Next() bool {
 		return false
 	}
 
-	_, i.lastErr = i.currLog.Decode(i.driver)
+	var decoded int
+	decoded, i.lastErr = i.currLog.Decode(i.driver)
 	if i.lastErr != nil {
 		return false
 	}
+
+	i.currLid = LogID{
+		Offset: i.headOff,
+		Size:   i.currLog.Size(),
+	}
+
+	i.headOff += int64(decoded)
 
 	return true
 }

@@ -14,6 +14,7 @@ const (
 type Config struct {
 	ListenAddr         string
 	ShutdownTimeout    time.Duration
+	RootPath           string
 	PreallocMemorySize int
 }
 
@@ -22,5 +23,6 @@ func (cfg *Config) LoadFromFlags() {
 
 	flag.StringVar(&cfg.ListenAddr, "listen-addr", _defaultListenAddr, "listen address")
 	flag.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", _defaultShutdownTimeout, "shutdown timeout")
+	flag.StringVar(&cfg.RootPath, "root-path", "", "path to data files")
 	flag.IntVar(&cfg.PreallocMemorySize, "prealloc-memory-size", _defaultPreallocMemorySize, "preallocation memory size")
 }

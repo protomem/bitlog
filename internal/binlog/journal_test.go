@@ -2,8 +2,6 @@ package binlog_test
 
 import (
 	"encoding/base32"
-	"errors"
-	"io"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -67,7 +65,7 @@ func TestKeyValueJournal_Iter(t *testing.T) {
 			t.Fatalf("iter.Next() returned false at index=%d, err=%v", i, iter.Err())
 		}
 
-		actualLog := iter.Value()
+		_, actualLog := iter.Value()
 		if actualLog == nil {
 			t.Fatalf("iter.Value() is nil at index=%d", i)
 		}
@@ -83,10 +81,7 @@ func TestKeyValueJournal_Iter(t *testing.T) {
 	if iter.Next() {
 		t.Fatalf("iter.Next() after last record must be false")
 	}
-	if err := iter.Err(); !errors.Is(err, io.EOF) {
-		t.Fatalf("iter.Err() must wrap io.EOF after end: err=%v", err)
-	}
-	if actualLog := iter.Value(); actualLog != nil {
+	if _, actualLog := iter.Value(); actualLog != nil {
 		t.Fatalf("iter.Value() after terminal error must be nil: actual=%+v", actualLog)
 	}
 
