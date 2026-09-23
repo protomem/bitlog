@@ -2,16 +2,14 @@ package binlog
 
 import (
 	"bytes"
-	"errors"
 	"io"
 	"sync"
 
+	"github.com/protomem/bitlog/pkg/ptr"
 	"github.com/protomem/bitlog/pkg/werrors"
 )
 
 const _journalErrorMsg = "binlog/journal"
-
-var ErrInvalidLog = errors.New("invalid log")
 
 type Driver interface {
 	io.WriterAt
@@ -20,23 +18,23 @@ type Driver interface {
 
 type Journal[L Log] struct {
 	driver Driver
-	newLog func() L
+	lpool  LogPool[L]
 
 	writeLock sync.Mutex
 	headOff   int64
 }
 
-func NewJournal[L Log](driver Driver, newLog func() L) *Journal[L] {
+func NewJournal[L Log](driver Driver, lpool LogPool[L]) *Journal[L] {
 	if driver == nil {
 		werrors.PanicMessage(_journalErrorMsg, "driver is nil")
 	}
-	if newLog == nil {
-		werrors.PanicMessage(_journalErrorMsg, "newLog is nil")
+	if lpool == nil {
+		werrors.PanicMessage(_journalErrorMsg, "log pool is nil")
 	}
 
 	return &Journal[L]{
 		driver: driver,
-		newLog: newLog,
+		lpool:  lpool,
 	}
 }
 
@@ -65,7 +63,10 @@ func (j *Journal[L]) Write(log L) (LogID, error) {
 }
 
 func (j *Journal[L]) Read(lid LogID) (L, error) {
-	log := j.newLog()
+	log, err := j.lpool.Alloc()
+	if err != nil {
+		return ptr.Zero[L](), werrors.Error(err, _journalErrorMsg, "log alloc")
+	}
 
 	rawBuf := make([]byte, lid.Size)
 	if _, err := j.driver.ReadAt(rawBuf, lid.Offset); err != nil {
