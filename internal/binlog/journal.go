@@ -13,6 +13,8 @@ const _journalErrorMsg = "binlog/journal"
 
 type Driver interface {
 	io.WriterAt
+
+	io.Reader
 	io.ReaderAt
 }
 
@@ -83,4 +85,63 @@ func (j *Journal[L]) Read(lid LogID) (L, error) {
 	}
 
 	return log, nil
+}
+
+func (j *Journal[L]) Iter() *JournalIterator[L] {
+	return NewJournalIterator(j.driver, j.lpool)
+}
+
+type JournalIterator[L Log] struct {
+	driver Driver
+	lpool  LogPool[L]
+
+	lock    sync.RWMutex
+	lastErr error
+	currLog L
+}
+
+func NewJournalIterator[L Log](driver Driver, lpool LogPool[L]) *JournalIterator[L] {
+	return &JournalIterator[L]{
+		driver: driver,
+		lpool:  lpool,
+	}
+}
+
+func (i *JournalIterator[L]) Err() error {
+	i.lock.RLock()
+	defer i.lock.RUnlock()
+
+	return werrors.Error(i.lastErr, _journalErrorMsg, "iter")
+}
+
+func (i *JournalIterator[L]) Value() L {
+	i.lock.RLock()
+	defer i.lock.RUnlock()
+
+	if i.lastErr != nil {
+		return ptr.Zero[L]()
+	}
+
+	return i.currLog
+}
+
+func (i *JournalIterator[L]) Next() bool {
+	i.lock.Lock()
+	defer i.lock.Unlock()
+
+	if i.lastErr != nil {
+		return false
+	}
+
+	i.currLog, i.lastErr = i.lpool.Alloc()
+	if i.lastErr != nil {
+		return false
+	}
+
+	_, i.lastErr = i.currLog.Decode(i.driver)
+	if i.lastErr != nil {
+		return false
+	}
+
+	return true
 }

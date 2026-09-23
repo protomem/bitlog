@@ -2,6 +2,8 @@ package binlog_test
 
 import (
 	"encoding/base32"
+	"errors"
+	"io"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -45,6 +47,51 @@ func TestKeyValueJournal_WriteRead(t *testing.T) {
 		if !logs[i].Equals(actualLog) {
 			t.Fatalf("logs not equals: expected=%+v actual=%+v", logs[i], actualLog)
 		}
+	}
+}
+
+func TestKeyValueJournal_Iter(t *testing.T) {
+	driver := openTestFile(t, "journal-iter.binlog")
+	journal := binlog.NewKeyValueJournal(driver)
+
+	logs := genKeyValueLogs(t, 20)
+	for i, log := range logs {
+		if _, err := journal.Write(log); err != nil {
+			t.Fatalf("failed write log[%d] with err=%s", i, err)
+		}
+	}
+
+	iter := journal.Iter()
+	for i, expectedLog := range logs {
+		if !iter.Next() {
+			t.Fatalf("iter.Next() returned false at index=%d, err=%v", i, iter.Err())
+		}
+
+		actualLog := iter.Value()
+		if actualLog == nil {
+			t.Fatalf("iter.Value() is nil at index=%d", i)
+		}
+		if !expectedLog.Equals(actualLog) {
+			t.Fatalf("logs not equals at index=%d: expected=%+v actual=%+v", i, expectedLog, actualLog)
+		}
+
+		if err := iter.Err(); err != nil {
+			t.Fatalf("iter.Err() after successful Next must be nil, index=%d err=%v", i, err)
+		}
+	}
+
+	if iter.Next() {
+		t.Fatalf("iter.Next() after last record must be false")
+	}
+	if err := iter.Err(); !errors.Is(err, io.EOF) {
+		t.Fatalf("iter.Err() must wrap io.EOF after end: err=%v", err)
+	}
+	if actualLog := iter.Value(); actualLog != nil {
+		t.Fatalf("iter.Value() after terminal error must be nil: actual=%+v", actualLog)
+	}
+
+	if iter.Next() {
+		t.Fatalf("iter.Next() must remain false after terminal error")
 	}
 }
 

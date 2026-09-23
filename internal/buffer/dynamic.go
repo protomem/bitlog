@@ -13,8 +13,9 @@ const _dynBufErrorMsg = "buffer.Dynamic"
 var ErrNegativeOffset = errors.New("negative offset")
 
 type Dynamic struct {
-	mu  sync.RWMutex
-	buf []byte
+	mu      sync.RWMutex
+	buf     []byte
+	readOff int64
 }
 
 func NewDynamic(buf []byte) *Dynamic {
@@ -45,6 +46,35 @@ func (d *Dynamic) WriteAt(p []byte, off int64) (n int, err error) {
 
 	copy(d.buf[int(off):end], p)
 	return len(p), nil
+}
+
+func (d *Dynamic) Read(p []byte) (n int, err error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if len(p) == 0 {
+		return 0, nil
+	}
+
+	if d.readOff >= int64(len(d.buf)) {
+		return 0, io.EOF
+	}
+
+	available := len(d.buf) - int(d.readOff)
+	if len(p) > available {
+		n = available
+	} else {
+		n = len(p)
+	}
+
+	copy(p, d.buf[int(d.readOff):int(d.readOff)+n])
+	d.readOff += int64(n)
+
+	if n < len(p) {
+		return n, io.EOF
+	}
+
+	return n, nil
 }
 
 func (d *Dynamic) ReadAt(p []byte, off int64) (n int, err error) {
