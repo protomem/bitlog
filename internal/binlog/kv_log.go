@@ -134,17 +134,13 @@ func (l *KeyValueLog) Decode(src io.Reader) (read int, err error) {
 	headOff += bin.ValueTo(binary.LittleEndian, headData[headOff:], &keySize)
 	headOff += bin.ValueTo(binary.LittleEndian, headData[headOff:], &valueSize)
 
-	l.Key = make([]byte, keySize)
-	l.Value = make([]byte, valueSize)
+	bodyData := make([]byte, keySize+valueSize)
 
-	readKey, err := src.Read(l.Key)
-	read += readKey
-	if err != nil {
-		return
-	}
+	l.Key = bodyData[:keySize]
+	l.Value = bodyData[keySize:]
 
-	readValue, err := src.Read(l.Value)
-	read += readValue
+	readBody, err := src.Read(bodyData)
+	read += readBody
 
 	return
 }
