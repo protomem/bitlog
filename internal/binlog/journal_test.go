@@ -48,6 +48,48 @@ func TestKeyValueJournal_WriteRead(t *testing.T) {
 	}
 }
 
+func TestKeyValueJournal_Iter(t *testing.T) {
+	driver := openTestFile(t, "journal-iter.binlog")
+	journal := binlog.NewKeyValueJournal(driver)
+
+	logs := genKeyValueLogs(t, 20)
+	for i, log := range logs {
+		if _, err := journal.Write(log); err != nil {
+			t.Fatalf("failed write log[%d] with err=%s", i, err)
+		}
+	}
+
+	iter := journal.Iter()
+	for i, expectedLog := range logs {
+		if !iter.Next() {
+			t.Fatalf("iter.Next() returned false at index=%d, err=%v", i, iter.Err())
+		}
+
+		_, actualLog := iter.Value()
+		if actualLog == nil {
+			t.Fatalf("iter.Value() is nil at index=%d", i)
+		}
+		if !expectedLog.Equals(actualLog) {
+			t.Fatalf("logs not equals at index=%d: expected=%+v actual=%+v", i, expectedLog, actualLog)
+		}
+
+		if err := iter.Err(); err != nil {
+			t.Fatalf("iter.Err() after successful Next must be nil, index=%d err=%v", i, err)
+		}
+	}
+
+	if iter.Next() {
+		t.Fatalf("iter.Next() after last record must be false")
+	}
+	if _, actualLog := iter.Value(); actualLog != nil {
+		t.Fatalf("iter.Value() after terminal error must be nil: actual=%+v", actualLog)
+	}
+
+	if iter.Next() {
+		t.Fatalf("iter.Next() must remain false after terminal error")
+	}
+}
+
 func openTestFile(t *testing.T, name string) *os.File {
 	t.Helper()
 

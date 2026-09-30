@@ -12,6 +12,24 @@ func NewFacade(driver Driver) *Facade {
 	}
 }
 
+func (f *Facade) Recover() error {
+	var err error
+	iter := f.mainJournal.Iter()
+
+	for iter.Next() {
+		if err = iter.Err(); err != nil {
+			break
+		}
+
+		lid, log := iter.Value()
+		index := NewIndex(log.Key, lid)
+
+		f.actualKeys.Insert(index)
+	}
+
+	return err
+}
+
 func (f *Facade) Get(key []byte) ([]byte, bool, error) {
 	index, exists := f.actualKeys.Lookup(key)
 	if !exists || index == nil {
