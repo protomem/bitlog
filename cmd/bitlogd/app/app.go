@@ -10,9 +10,9 @@ import (
 
 	"github.com/protomem/bitlog/internal/apprunner"
 	"github.com/protomem/bitlog/internal/binlog"
-	"github.com/protomem/bitlog/internal/buffer"
 	"github.com/protomem/bitlog/internal/network/tcp"
 	"github.com/protomem/bitlog/internal/protokey"
+	"github.com/protomem/bitlog/pkg/buffer"
 	"github.com/protomem/bitlog/pkg/werrors"
 )
 
