@@ -2,22 +2,19 @@ package app
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
-	"fmt"
+	"io"
 	"log"
 	"os"
 
 	"github.com/protomem/bitlog/internal/apprunner"
 	"github.com/protomem/bitlog/internal/binlog"
-	"github.com/protomem/bitlog/internal/buffer"
 	"github.com/protomem/bitlog/internal/network/tcp"
 	"github.com/protomem/bitlog/internal/protokey"
+	"github.com/protomem/bitlog/pkg/buffer"
 	"github.com/protomem/bitlog/pkg/werrors"
 )
-
-const _newLine = "\r\n"
 
 type App struct {
 	cfg    Config
@@ -94,73 +91,108 @@ func (app *App) handleServeTCP(conn tcp.Conn) {
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
 
-	scanner := bufio.NewScanner(reader)
+	parser := protokey.NewParser(reader)
+	respWriter := protokey.NewWriter(writer)
+	router := app.newProtokeyRouter()
 
-	for scanner.Scan() {
-		if err := scanner.Err(); err != nil {
-			log.Printf("received message with error=%s", err)
+	for {
+		command, err := parser.ReadCommand()
+		if err != nil {
+			switch {
+			case errors.Is(err, io.EOF):
+				return
+			case protokey.IsProtocolError(err):
+				_ = respWriter.Error("ERR " + err.Error())
+				_ = respWriter.Flush()
+				return
+			default:
+				log.Printf("failed read command with error=%s", err)
+				return
+			}
+		}
+
+		if err := router.Serve(command, respWriter); err != nil {
+			log.Printf("failed serve command with error=%s", err)
 			return
 		}
 
-		buf := bytes.NewBuffer(scanner.Bytes())
-
-		cmd, args, err := protokey.Parse(buf)
-		if err != nil {
-			fmt.Fprintf(writer, "INVALID COMMAND '%s'", err)
-			log.Printf("parse received message with error=%s", err)
-			goto FLUSH
+		if err := respWriter.Flush(); err != nil {
+			log.Printf("failed flush response with error=%s", err)
+			return
 		}
+	}
+}
 
-		log.Printf("parsed command %d with args %+v", cmd, args)
+func (app *App) newProtokeyRouter() *protokey.Router {
+	router := protokey.NewRouter()
 
-		switch cmd {
+	router.Handle("PING", func(args [][]byte, writer *protokey.Writer) error {
+		switch len(args) {
+		case 0:
+			return writer.SimpleString("PONG")
+		case 1:
+			return writer.BulkString(args[0])
 		default:
-			writer.WriteString("UNSUPORTED COMMAND")
+			return writer.Error("ERR wrong number of arguments for 'ping' command")
+		}
+	})
 
-		case protokey.PING:
-			writer.WriteString("PONG")
+	router.Handle("SET", func(args [][]byte, writer *protokey.Writer) error {
+		if len(args) != 2 {
+			return writer.Error("ERR wrong number of arguments for 'set' command")
+		}
 
-		case protokey.SET:
-			key := args[protokey.KeyKind]
-			value := args[protokey.ValueKind]
+		if err := app.kvLog.Set(args[0], args[1]); err != nil {
+			log.Printf("failed set key=%q with error=%s", string(args[0]), err)
+			return writer.Error("ERR internal error")
+		}
 
-			if err := app.kvLog.Set(key, value); err != nil {
-				fmt.Fprintf(writer, "INVALID EXEC COMMAND '%s'", err)
-			}
+		return writer.SimpleString("OK")
+	})
 
-			writer.WriteString("OK")
+	router.Handle("GET", func(args [][]byte, writer *protokey.Writer) error {
+		if len(args) != 1 {
+			return writer.Error("ERR wrong number of arguments for 'get' command")
+		}
 
-		case protokey.GET:
-			key := args[protokey.KeyKind]
+		value, exists, err := app.kvLog.Get(args[0])
+		if err != nil {
+			log.Printf("failed get key=%q with error=%s", string(args[0]), err)
+			return writer.Error("ERR internal error")
+		}
+		if !exists {
+			return writer.NullBulkString()
+		}
 
-			value, keyExists, err := app.kvLog.Get(key)
+		return writer.BulkString(value)
+	})
+
+	router.Handle("DEL", func(args [][]byte, writer *protokey.Writer) error {
+		if len(args) == 0 {
+			return writer.Error("ERR wrong number of arguments for 'del' command")
+		}
+
+		var deleted int64
+		for _, key := range args {
+			_, exists, err := app.kvLog.Get(key)
 			if err != nil {
-				fmt.Fprintf(writer, "INVALID EXEC COMMAND '%s'", err)
+				log.Printf("failed check key=%q with error=%s", string(key), err)
+				return writer.Error("ERR internal error")
 			}
-			if !keyExists {
-				writer.WriteString("KEY NOT FOUND")
-			}
-
-			writer.Write(value)
-
-		case protokey.DEL:
-			key := args[protokey.KeyKind]
-
-			if err := app.kvLog.Delete(key); err != nil {
-				fmt.Fprintf(writer, "INVALID EXEC COMMAND '%s'", err)
+			if !exists {
+				continue
 			}
 
-			writer.WriteString("OK")
+			if err = app.kvLog.Delete(key); err != nil {
+				log.Printf("failed del key=%q with error=%s", string(key), err)
+				return writer.Error("ERR internal error")
+			}
+
+			deleted++
 		}
 
-	FLUSH:
-		writer.WriteString(_newLine)
-		if err := writer.Flush(); err != nil {
-			log.Printf("send message with error=%s", err)
-		}
-	}
+		return writer.Integer(deleted)
+	})
 
-	if err := scanner.Err(); err != nil && !errors.Is(err, tcp.ErrConnClosed) {
-		log.Printf("scann failed with error=%s", err)
-	}
+	return router
 }
